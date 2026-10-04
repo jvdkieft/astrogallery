@@ -29,6 +29,8 @@ Needs Python 3 and Pillow. PyYAML is used if installed; otherwise `minyaml.py` r
   frames are left out of the tables and totals.
 - `Finished/*.jpg`. TIFs are never published.
 
+See [PROCESSING.md](PROCESSING.md) for getting a newly processed image into the gallery.
+
 Missing files and session keys that are not in the inventory are reported as warnings; a target
 with neither a natural nor a HOO image is skipped.
 

@@ -171,6 +171,8 @@ def load_targets(picks_path, inv_path, images):
     picks = minyaml.load(picks_path)
     with open(inv_path) as f:
         inventory = json.load(f)
+    if not inventory:
+        sys.exit(f"{inv_path} has no sessions; was inventory.py run where ~/mnt/scopessd does not exist?")
     by_key = {}
     for s in inventory:
         by_key.setdefault(f"{s['scope']}|{s['target']}", []).append(s)
