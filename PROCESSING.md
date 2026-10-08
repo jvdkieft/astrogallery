@@ -1,14 +1,14 @@
 # Getting a finished image into the gallery
 
 For whoever processes images (usually a Claude session working from `SirilWork/PI/README.md`).
-The gallery is built from three things on boris's Telescopes share (`\\boris\Telescopes`, mapped
-as `Y:` on Joe's PC; `/mnt/user/Telescopes` on boris). It is laid out like scopessd. You change those three things and the builder
-container on boris rebuilds the site by itself within a couple of minutes.
+The gallery is built from boris's telescopes share (`\\boris\Telescopes` over SMB,
+`/mnt/user/Telescopes` on boris). You change things there and the builder container on boris
+rebuilds the site by itself within a couple of minutes. scopessd is not involved.
 
-| Step | What | Where (on the Telescopes share) |
+| Step | What | Where (on the share) |
 |---|---|---|
 | 1 | Copy the finished JPG | `Finished/` |
-| 2 | Refresh the inventory | `Gallery/inventory.json` |
+| 2 | Make sure the capture data is there | `Source Data/` (hours are counted from it) |
 | 3 | Point picks.yaml at the new image | `Gallery/picks.yaml` |
 | 4 | Check the build | `ssh root@192.168.1.3 docker logs --tail 20 astrogallery-builder` |
 
@@ -16,8 +16,8 @@ The live gallery is http://192.168.1.3:8088 (nginx container `astrogallery` on b
 
 ## 1. Finished/
 
-- Copy to the top level of the share's `Finished/`. The generator does not look in subfolders.
-  TIFs can stay on scopessd; only the JPG is needed here.
+- Copy to the top level of the share's `Finished/`. The generator does not look in subfolders
+  and ignores TIFs; only the JPG is published.
 - Naming, from `README - Portfolio.md`:
   `<Cat#> <Name> <D3|S30P|S30P+D3> [mosaic] <PixInsight|Siril> [HOO] <YYYYMMDD[+MMDD...]> [wide].jpg`,
   e.g. `NGC 281 Pacman D3 PixInsight HOO 20260911+1002+1003 wide.jpg`. Date = local evening the
@@ -31,31 +31,31 @@ The live gallery is http://192.168.1.3:8088 (nginx container `astrogallery` on b
   Overwriting also works: the generator rebuilds any image whose mtime or size changed.
 - The generator never writes to the share (it is mounted read-only).
 
-## 2. inventory.json
+## 2. Source Data (hours and sessions)
 
-Hours, nights, scopes and filters on the site all come from `inventory.json`, never from file names.
-Rerun it after new data lands or after stacking:
+Hours, nights, scopes and filters on the site all come from the capture data in `Source Data/` on
+the share, never from file names. The builder scans it on every build with `inventory.py` (same
+rules as `SirilWork/PI/py/inventory.py`): Seestar `Seestar S30 Pro/<target>/Stacked_*.fit` names and
+Dwarf `Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json`. So new data only has to be copied to the
+share; there is nothing to rerun.
+
+To see what the scan finds (one line per session):
 
 ```
-python3 ~/lib/inventory.py        # or SirilWork/PI/py/inventory.py
+python3 inventory.py "/mnt/user/Telescopes/Source Data"      # or "Y:\Source Data" on Windows
 ```
 
-It scans `~/mnt/scopessd/Source Data/` and writes `~/mnt/scopessd/Gallery/inventory.json`, so run it
-on the processing VM where scopessd is mounted at `~/mnt/scopessd`. Then copy that file into `Gallery/` on
-the Telescopes share, overwriting the old one. (If the VM can mount the Telescopes share, copying it there as part
-of the same command saves the step.) On Joe's Mac `~/mnt/scopessd` does not exist and it would write
-an empty list; `gallery.py` refuses to build from an empty inventory.
+The second and third columns (`scope`, `target`) are what picks.yaml `sessions` keys must match,
+e.g. `D3   NGC 281 ...` -> `"D3|NGC 281"`, and Seestar mosaics come out as `S30P|mosaic_IC 1805`.
+Sessions with 0 stacked frames are ignored by the gallery.
 
-If `inventory.json` is missing from the share the site still builds and shows the images, just
-without hours, goal bars and session tables.
-
-It prints one line per session. The second and third columns (`scope`, `target`) are what picks.yaml
-`sessions` keys must match, e.g. `D3   NGC 281 ...` -> `"D3|NGC 281"`, and Seestar mosaics come out as
-`S30P|mosaic_IC 1805`. Sessions with 0 stacked frames are ignored by the gallery.
+If `Gallery/inventory.json` exists on the share it is used instead of the scan (the build log says
+`sessions: N from .../inventory.json`). That is only a stopgap while `Source Data/` is incomplete;
+delete it to go back to scanning. An empty inventory.json is refused.
 
 ## 3. picks.yaml
 
-`Gallery/picks.yaml` decides what is shown. Joe owns it; keep edits small and say what you changed.
+`Gallery/picks.yaml` on the share decides what is shown. Joe owns it; keep edits small and say what you changed.
 Entries marked `# check` are guesses waiting for Joe.
 
 ```yaml
@@ -64,7 +64,7 @@ targets:
     name: NGC 281 Pacman              # card and page title
     kind: emission nebula             # also decides the group (see below); "mosaic" adds a badge
     goal_h: 5                         # depth goal in hours (README - Portfolio.md); omit for none
-    sessions: ["D3|NGC 281"]          # "<scope>|<target>" from inventory.json, exact match; summed
+    sessions: ["D3|NGC 281"]          # "<scope>|<target>" from the capture sessions, exact match; summed
     natural: NGC 281 Pacman D3 PixInsight 20260911+1002+1003 wide.jpg      # file name in Finished/
     hoo: NGC 281 Pacman D3 PixInsight HOO 20260911+1002+1003 wide.jpg      # optional
     alt: [NGC 281 Pacman D3 Siril hand 20260911 wide.jpg]                  # optional, shown as "Other versions"
@@ -92,7 +92,8 @@ Common edits:
   the new ones. Move the old one into `alt` only if it is still worth seeing.
 - **New target**: add an entry with a new `id`; add every scope/target key that counts toward it
   to `sessions` (both scopes, mosaic and single-panel).
-- **New data, same image**: nothing to change in picks.yaml; rerunning the inventory updates the hours.
+- **New data, same image**: nothing to change in picks.yaml; once the data is in `Source Data/` the
+  hours update by themselves.
 
 Keep picks.yaml plain YAML: block lists and maps, `[a, b]` lists, `#` comments. PyYAML is not
 installed on the Mac or in the builder, and the fallback reader handles nothing fancier (no anchors, no multi-line
@@ -108,20 +109,22 @@ ssh root@192.168.1.3 docker logs --tail 20 astrogallery-builder
 ```
 
 `warning: missing in Finished/: ...` means a picks.yaml file name is wrong, and
-`warning: <id>: session key ... not in inventory.json` means a `sessions` key doesn't match.
+`warning: <id>: session key ... not in the capture sessions` means a `sessions` key doesn't match,
+or that night's data is not in `Source Data/` yet.
 Spot-check the hours it prints. A line `watch: build FAILED` means the site was left as it was;
 fix the input and the next change triggers another build.
 
 Without SSH to boris, just open the target page on http://192.168.1.3:8088 and check it.
 
-To try a change before it goes live, build locally against a copy of the share:
-`make preview SCOPESSD=<copy>` (or `SCOPESSD=/Volumes/scopessd`, which has the same layout).
+To try a change before it goes live, build locally from the share (read only) with a draft
+picks.yaml: `python3 gallery.py --root <share> --picks <draft picks.yaml>`, then `make preview`-style
+serve `site/`.
 
 Code changes to the generator still need `make deploy` from Joe's Mac, with Joe's say-so.
 
 ## Checklist
 
 - [ ] JPG in the share's `Finished/`, named per the convention, HOO + natural for emission targets
-- [ ] `inventory.py` rerun on the VM and `inventory.json` copied into `Gallery/` on the share
+- [ ] capture data for every night in the share's `Source Data/`
 - [ ] picks.yaml points at the new files; `sessions` keys cover all the data
 - [ ] builder log shows no warnings and the right hours, and the page looks right on http://192.168.1.3:8088

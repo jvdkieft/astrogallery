@@ -1,10 +1,11 @@
 # astrogallery: make site | preview (local) | deploy (boris builds the live site itself)
-SCOPESSD ?= /Volumes/scopessd
+# the telescopes share (smb://boris/Telescopes) as mounted on this machine
+TELESCOPES ?= /Volumes/Telescopes
 PORT     ?= 8000
 # boris (Unraid). Override on the command line, e.g. make deploy BORIS=root@boris.local
 BORIS    ?= root@192.168.1.3
 APPDATA  ?= /mnt/user/appdata/astrogallery
-# share on boris laid out like scopessd: Finished/, Gallery/picks.yaml, Gallery/inventory.json
+# the same share on boris: Finished/, Gallery/picks.yaml, Source Data/
 GALLERY_ROOT ?= /mnt/user/Telescopes
 
 .PHONY: all site preview deploy clean
@@ -12,7 +13,7 @@ GALLERY_ROOT ?= /mnt/user/Telescopes
 all: deploy
 
 site:
-	python3 gallery.py --src "$(SCOPESSD)"
+	python3 gallery.py --root "$(TELESCOPES)"
 
 preview: site
 	@echo "http://localhost:$(PORT)/"

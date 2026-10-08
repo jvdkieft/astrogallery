@@ -3,8 +3,8 @@
 # `docker compose up -d --build`.
 # Nginx Proxy Manager (192.168.1.10) then forwards astro.home.vandekieft.net -> 192.168.1.3:8088.
 #
-# The builder reads the Telescopes share read-only (Finished/, Gallery/picks.yaml,
-# Gallery/inventory.json, as on scopessd) and writes ./site; nginx serves ./site.
+# The builder reads the telescopes share read-only (Finished/, Gallery/picks.yaml, Source Data/)
+# and writes ./site; nginx serves ./site.
 # GALLERY_ROOT comes from ./.env (deploy.sh writes it).
 services:
   astrogallery:

@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Build the astro gallery: picks.yaml + inventory.json + Finished/*.jpg -> site/.
+"""Build the astro gallery: picks.yaml + Finished/*.jpg + capture sessions -> site/.
 
-    python3 gallery.py [--src /Volumes/scopessd] [--finished DIR] [--picks FILE]
-                       [--inventory FILE] [--out site] [--jobs N]
+    python3 gallery.py --root /mnt/user/Telescopes [--finished DIR] [--picks FILE]
+                       [--inventory FILE] [--source DIR] [--out site] [--jobs N]
 
-Every path also has a GALLERY_* environment variable (see --help); the builder container on
-boris uses those. inventory.json is optional: without it the site has no hours or sessions.
+--root is the telescopes share: Finished/, Gallery/picks.yaml and Source Data/. Hours and
+sessions come from scanning Source Data/ (inventory.py), unless Gallery/inventory.json exists or
+--inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
+builder container on boris uses those. Without sessions the site has no hours.
 
-Reads only; nothing under --src is ever written. Web derivatives (600 px thumb, 2560 px
+Reads only; nothing under --root is ever written. Web derivatives (600 px thumb, 2560 px
 display, both progressive sRGB JPEG) and a byte copy of the full-res JPG go in site/img and
 site/full. They are rebuilt only when the source file's mtime or size changes
 (site/.manifest.json), so a rerun after a single new image is quick.
@@ -24,6 +26,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from PIL import Image, ImageCms, ImageOps
 
+import inventory as inventory_scan
 import minyaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -171,16 +174,50 @@ class Images:
 
 # ---------------------------------------------------------------- data
 
-def load_targets(picks_path, inv_path, images):
-    picks = minyaml.load(picks_path)
-    if os.path.isfile(inv_path):
+def input_paths(root=None, finished=None, picks=None, inventory=None, source=None):
+    """(finished, picks, inventory, source) from the arguments, else GALLERY_* variables, else
+    under root (GALLERY_ROOT). inventory is None unless given or <root>/Gallery/inventory.json
+    exists; it wins over scanning source. watch.py uses this too."""
+    env = os.environ.get
+    root = root or env("GALLERY_ROOT")
+    finished = finished or env("GALLERY_FINISHED")
+    picks = picks or env("GALLERY_PICKS")
+    inventory = inventory or env("GALLERY_INVENTORY")
+    source = source or env("GALLERY_SOURCE")
+    if root:
+        finished = finished or os.path.join(root, "Finished")
+        picks = picks or os.path.join(root, "Gallery", "picks.yaml")
+        source = source or os.path.join(root, "Source Data")
+        inv = os.path.join(root, "Gallery", "inventory.json")
+        inventory = inventory or (inv if os.path.isfile(inv) else None)
+    if not (finished and picks):
+        sys.exit("say where the telescopes share is: --root DIR or GALLERY_ROOT "
+                 "(or both --finished and --picks)")
+    return finished, picks, inventory, source
+
+
+def load_inventory(inv_path, source):
+    """Session list from inv_path if set, else from scanning source; None when neither has any."""
+    if inv_path:
         with open(inv_path) as f:
-            inventory = json.load(f)
-        if not inventory:
-            sys.exit(f"{inv_path} has no sessions; was inventory.py run where ~/mnt/scopessd does not exist?")
+            sessions = json.load(f)
+        if not sessions:
+            sys.exit(f"{inv_path} has no sessions; delete it to scan Source Data instead")
+        print(f"sessions: {len(sessions)} from {inv_path}", file=sys.stderr)
+        return sessions
+    if source and os.path.isdir(source):
+        sessions = inventory_scan.scan(source)
+        if sessions:
+            print(f"sessions: {len(sessions)} from {source}", file=sys.stderr)
+            return sessions
+        warn(f"no capture sessions found in {source}; building without session data")
     else:  # images still publish; hours, nights and session tables are left out
-        warn(f"no inventory at {inv_path}; building without session data")
-        inventory = None
+        warn(f"no inventory.json and no Source Data folder ({source}); building without session data")
+    return None
+
+
+def load_targets(picks_path, inventory, images):
+    picks = minyaml.load(picks_path)
     by_key = {}
     for s in inventory or []:
         by_key.setdefault(f"{s['scope']}|{s['target']}", []).append(s)
@@ -216,7 +253,7 @@ def load_targets(picks_path, inv_path, images):
         sessions = []
         for key in p.get("sessions") or []:
             if inventory is not None and key not in by_key:
-                warn(f"{tid}: session key {key!r} not in inventory.json")
+                warn(f"{tid}: session key {key!r} not in the capture sessions")
             sessions += [s for s in by_key.get(key, []) if s.get("frames", 0) > 0]
         sessions.sort(key=lambda s: (s["night"], s["scope"], s.get("exp", 0)))
         t["sessions"] = sessions
@@ -420,21 +457,19 @@ def write(path, text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     env = os.environ.get
-    ap.add_argument("--src", default=env("GALLERY_SRC") or env("SCOPESSD") or "/Volumes/scopessd",
-                    help="scopessd-style root (default $GALLERY_SRC, $SCOPESSD or /Volumes/scopessd)")
-    ap.add_argument("--finished", default=env("GALLERY_FINISHED"),
-                    help="folder of finished JPGs (default $GALLERY_FINISHED or <src>/Finished)")
-    ap.add_argument("--picks", default=env("GALLERY_PICKS"),
-                    help="default $GALLERY_PICKS or <src>/Gallery/picks.yaml")
-    ap.add_argument("--inventory", default=env("GALLERY_INVENTORY"),
-                    help="default $GALLERY_INVENTORY or <src>/Gallery/inventory.json; optional")
+    ap.add_argument("--root", help="the telescopes share (default $GALLERY_ROOT)")
+    ap.add_argument("--finished", help="folder of finished JPGs (default $GALLERY_FINISHED or <root>/Finished)")
+    ap.add_argument("--picks", help="default $GALLERY_PICKS or <root>/Gallery/picks.yaml")
+    ap.add_argument("--inventory", help="sessions file; default $GALLERY_INVENTORY or "
+                    "<root>/Gallery/inventory.json if it exists, else Source Data is scanned")
+    ap.add_argument("--source", help="Source Data folder to scan (default $GALLERY_SOURCE or <root>/Source Data)")
     ap.add_argument("--out", default=env("GALLERY_OUT") or os.path.join(HERE, "site"))
     ap.add_argument("--jobs", type=int, default=int(env("GALLERY_JOBS") or 0) or os.cpu_count() or 4)
     a = ap.parse_args()
 
-    images = Images(a.finished or os.path.join(a.src, "Finished"), a.out)
-    targets = load_targets(a.picks or os.path.join(a.src, "Gallery", "picks.yaml"),
-                           a.inventory or os.path.join(a.src, "Gallery", "inventory.json"), images)
+    finished, picks, inv_path, source = input_paths(a.root, a.finished, a.picks, a.inventory, a.source)
+    images = Images(finished, a.out)
+    targets = load_targets(picks, load_inventory(inv_path, source), images)
     images.build(a.jobs)
 
     generated = dt.datetime.now().strftime("%Y-%m-%d %H:%M")

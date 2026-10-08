@@ -3,10 +3,12 @@
 
     python3 watch.py [--interval 60]
 
-Polls the files gallery.py reads (the GALLERY_* environment variables, see gallery.py --help)
-and reruns gallery.py once they have stopped changing for one poll, so a JPG that is still
-being copied over SMB is not picked up half-written. Polling rather than inotify because
-writes that arrive through Unraid's /mnt/user (shfs) or SMB do not reliably raise events.
+Polls the files gallery.py reads (GALLERY_ROOT and the other GALLERY_* variables, see
+gallery.py --help): picks.yaml, the JPGs in Finished/, and the stacks and shotsInfo.json files
+in Source Data/ (or inventory.json when that is used instead). Reruns gallery.py once they have
+stopped changing for one poll, so a JPG that is still being copied over SMB is not picked up
+half-written. Polling rather than inotify because writes that arrive through Unraid's
+/mnt/user (shfs) or SMB do not reliably raise events.
 Always builds once at startup.
 """
 import argparse
@@ -15,22 +17,21 @@ import subprocess
 import sys
 import time
 
+import inventory
+from gallery import input_paths
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def inputs():
-    env = os.environ.get
-    src = env("GALLERY_SRC") or env("SCOPESSD") or "/Volumes/scopessd"
-    return (env("GALLERY_FINISHED") or os.path.join(src, "Finished"),
-            env("GALLERY_PICKS") or os.path.join(src, "Gallery", "picks.yaml"),
-            env("GALLERY_INVENTORY") or os.path.join(src, "Gallery", "inventory.json"))
-
-
 def signature():
-    """(name, mtime, size) of every input file; top level of Finished/ only, like gallery.py."""
-    finished, picks, inventory = inputs()
+    """(name, mtime, size) of every input file; top level of Finished/ only, like gallery.py.
+    Paths are resolved on every poll, so adding or removing Gallery/inventory.json is noticed."""
+    finished, picks, inv_path, source = input_paths()
+    files = [picks, inv_path or os.path.join(os.path.dirname(picks), "inventory.json")]
+    if not inv_path and source and os.path.isdir(source):
+        files += inventory.inputs(source)
     sig = []
-    for path in (picks, inventory):
+    for path in files:
         try:
             st = os.stat(path)
             sig.append((path, st.st_mtime, st.st_size))
