@@ -4,8 +4,8 @@ PORT     ?= 8000
 # boris (Unraid). Override on the command line, e.g. make deploy BORIS=root@boris.local
 BORIS    ?= root@192.168.1.3
 APPDATA  ?= /mnt/user/appdata/astrogallery
-# drop folder on boris: Finished/, picks.yaml, inventory.json
-GALLERY_DROP ?= /mnt/user/telescopes/Gallery
+# share on boris laid out like scopessd: Finished/, Gallery/picks.yaml, Gallery/inventory.json
+GALLERY_ROOT ?= /mnt/user/Telescopes
 
 .PHONY: all site preview deploy clean
 
@@ -19,7 +19,7 @@ preview: site
 	python3 -m http.server $(PORT) --bind 127.0.0.1 -d site
 
 deploy:
-	BORIS="$(BORIS)" APPDATA="$(APPDATA)" GALLERY_DROP="$(GALLERY_DROP)" ./deploy/deploy.sh
+	BORIS="$(BORIS)" APPDATA="$(APPDATA)" GALLERY_ROOT="$(GALLERY_ROOT)" ./deploy/deploy.sh
 
 clean:
 	rm -rf site

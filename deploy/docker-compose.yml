@@ -3,8 +3,9 @@
 # `docker compose up -d --build`.
 # Nginx Proxy Manager (192.168.1.10) then forwards astro.home.vandekieft.net -> 192.168.1.3:8088.
 #
-# The builder reads the drop folder read-only and writes ./site; nginx serves ./site.
-# GALLERY_DROP comes from ./.env (deploy.sh writes it); the default is a guess at the share path.
+# The builder reads the Telescopes share read-only (Finished/, Gallery/picks.yaml,
+# Gallery/inventory.json, as on scopessd) and writes ./site; nginx serves ./site.
+# GALLERY_ROOT comes from ./.env (deploy.sh writes it).
 services:
   astrogallery:
     image: nginx:alpine
@@ -21,5 +22,5 @@ services:
     container_name: astrogallery-builder
     restart: unless-stopped
     volumes:
-      - ${GALLERY_DROP:-/mnt/user/telescopes/Gallery}:/data:ro
+      - ${GALLERY_ROOT:-/mnt/user/Telescopes}:/data:ro
       - ./site:/site

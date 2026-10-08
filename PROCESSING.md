@@ -1,23 +1,22 @@
 # Getting a finished image into the gallery
 
 For whoever processes images (usually a Claude session working from `SirilWork/PI/README.md`).
-The gallery is built from three things in the drop folder on boris's telescopes share
-(`/mnt/user/telescopes/Gallery`, `\\boris\telescopes\Gallery` over SMB; the share path is an
-assumption, see `GALLERY_DROP` in the README). You change those three things and the builder
+The gallery is built from three things on boris's Telescopes share (`\\boris\Telescopes`, mapped
+as `Y:` on Joe's PC; `/mnt/user/Telescopes` on boris). It is laid out like scopessd. You change those three things and the builder
 container on boris rebuilds the site by itself within a couple of minutes.
 
-| Step | What | Where (in the drop folder) |
+| Step | What | Where (on the Telescopes share) |
 |---|---|---|
 | 1 | Copy the finished JPG | `Finished/` |
-| 2 | Refresh the inventory | `inventory.json` |
-| 3 | Point picks.yaml at the new image | `picks.yaml` |
+| 2 | Refresh the inventory | `Gallery/inventory.json` |
+| 3 | Point picks.yaml at the new image | `Gallery/picks.yaml` |
 | 4 | Check the build | `ssh root@192.168.1.3 docker logs --tail 20 astrogallery-builder` |
 
 The live gallery is http://192.168.1.3:8088 (nginx container `astrogallery` on boris).
 
 ## 1. Finished/
 
-- Copy to the top level of the drop folder's `Finished/`. The generator does not look in subfolders.
+- Copy to the top level of the share's `Finished/`. The generator does not look in subfolders.
   TIFs can stay on scopessd; only the JPG is needed here.
 - Naming, from `README - Portfolio.md`:
   `<Cat#> <Name> <D3|S30P|S30P+D3> [mosaic] <PixInsight|Siril> [HOO] <YYYYMMDD[+MMDD...]> [wide].jpg`,
@@ -30,7 +29,7 @@ The live gallery is http://192.168.1.3:8088 (nginx container `astrogallery` on b
   ICC profile; it is converted). TIFs are never published.
 - Prefer a new file name for a new version (more nights, new process) over overwriting the old one.
   Overwriting also works: the generator rebuilds any image whose mtime or size changed.
-- The generator never writes to the drop folder (it is mounted read-only).
+- The generator never writes to the share (it is mounted read-only).
 
 ## 2. inventory.json
 
@@ -42,12 +41,12 @@ python3 ~/lib/inventory.py        # or SirilWork/PI/py/inventory.py
 ```
 
 It scans `~/mnt/scopessd/Source Data/` and writes `~/mnt/scopessd/Gallery/inventory.json`, so run it
-on the processing VM where scopessd is mounted at `~/mnt/scopessd`. Then copy that file into the drop
-folder, overwriting the old one. (If the VM can mount the telescopes share, copying it there as part
+on the processing VM where scopessd is mounted at `~/mnt/scopessd`. Then copy that file into `Gallery/` on
+the Telescopes share, overwriting the old one. (If the VM can mount the Telescopes share, copying it there as part
 of the same command saves the step.) On Joe's Mac `~/mnt/scopessd` does not exist and it would write
 an empty list; `gallery.py` refuses to build from an empty inventory.
 
-If `inventory.json` is missing from the drop folder the site still builds and shows the images, just
+If `inventory.json` is missing from the share the site still builds and shows the images, just
 without hours, goal bars and session tables.
 
 It prints one line per session. The second and third columns (`scope`, `target`) are what picks.yaml
@@ -115,15 +114,14 @@ fix the input and the next change triggers another build.
 
 Without SSH to boris, just open the target page on http://192.168.1.3:8088 and check it.
 
-To try a change before it goes live, build locally against a copy of the drop folder:
-`python3 gallery.py --src <copy> --finished <copy>/Finished --picks <copy>/picks.yaml
---inventory <copy>/inventory.json`, then `make preview`-style serve `site/`.
+To try a change before it goes live, build locally against a copy of the share:
+`make preview SCOPESSD=<copy>` (or `SCOPESSD=/Volumes/scopessd`, which has the same layout).
 
 Code changes to the generator still need `make deploy` from Joe's Mac, with Joe's say-so.
 
 ## Checklist
 
-- [ ] JPG in the drop folder's `Finished/`, named per the convention, HOO + natural for emission targets
-- [ ] `inventory.py` rerun on the VM and `inventory.json` copied into the drop folder
+- [ ] JPG in the share's `Finished/`, named per the convention, HOO + natural for emission targets
+- [ ] `inventory.py` rerun on the VM and `inventory.json` copied into `Gallery/` on the share
 - [ ] picks.yaml points at the new files; `sessions` keys cover all the data
 - [ ] builder log shows no warnings and the right hours, and the page looks right on http://192.168.1.3:8088
