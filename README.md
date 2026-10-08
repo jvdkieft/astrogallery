@@ -1,32 +1,58 @@
 # astrogallery
 
-Static gallery of Joe's finished astrophotos, built from the curation on scopessd.
+Static gallery of Joe's finished astrophotos. A builder container on boris watches a drop folder on
+the telescopes share and rebuilds the site whenever something in it changes.
 
 ```
-picks.yaml + inventory.json + Finished/*.jpg  --gallery.py-->  site/  --deploy.sh-->  boris (nginx:alpine)
+<drop>/Finished/*.jpg + picks.yaml + inventory.json  --watch.py + gallery.py (boris)-->  site/  --nginx:alpine-->  :8088
 ```
+
+The drop folder defaults to `/mnt/user/telescopes/Gallery` on boris (an assumption; set
+`GALLERY_DROP` if the share is elsewhere). It holds:
+
+```
+Gallery/
+  Finished/       finished JPGs, top level only
+  picks.yaml      what is shown
+  inventory.json  hours and sessions (optional)
+```
+
+Drop a JPG in `Finished/`, point picks.yaml at it, and the live site updates within a couple of
+minutes. The builder polls every 60 s and builds once the inputs have stopped changing for one poll,
+so a file still being copied is not picked up half-written.
 
 ## Use
 
 ```
-make site      # build site/ from /Volumes/scopessd (SCOPESSD=... to override)
-make preview   # build, then serve it at http://localhost:8000
-make deploy    # rsync site/ to boris
-make all       # site + deploy
+make deploy    # ship the code to boris and (re)start nginx + the builder there
+make site      # build site/ locally from /Volumes/scopessd (SCOPESSD=... to override)
+make preview   # build locally, then serve it at http://localhost:8000
 ```
 
 `site/` also works opened straight from disk (`open site/index.html`); there is no JavaScript.
 
-Needs Python 3 and Pillow. PyYAML is used if installed; otherwise `minyaml.py` reads picks.yaml
-(block maps and lists, flow lists, comments; nothing fancier).
+Needs Python 3 and Pillow (the builder image has both). PyYAML is used if installed; otherwise
+`minyaml.py` reads picks.yaml (block maps and lists, flow lists, comments; nothing fancier).
 
 ## Inputs (read only, never written)
 
-- `Gallery/picks.yaml`: one entry per target. `natural`, `hoo`, `alt: [...]`, `inset: {natural, hoo}`
+Paths are set by flag or environment variable; the builder container uses the variables.
+
+| Input | Flag | Variable | Default |
+|---|---|---|---|
+| finished JPGs | `--finished` | `GALLERY_FINISHED` | `<src>/Finished` |
+| picks.yaml | `--picks` | `GALLERY_PICKS` | `<src>/Gallery/picks.yaml` |
+| inventory.json | `--inventory` | `GALLERY_INVENTORY` | `<src>/Gallery/inventory.json` |
+| output | `--out` | `GALLERY_OUT` | `./site` |
+| `<src>` | `--src` | `GALLERY_SRC`, `SCOPESSD` | `/Volumes/scopessd` |
+
+- `picks.yaml`: one entry per target. `natural`, `hoo`, `alt: [...]`, `inset: {natural, hoo}`
   are file names in `Finished/`. `sessions` are `"<scope>|<target>"` keys matched exactly against
   inventory.json. `goal_h` is the depth goal. `show: false` hides the target.
-- `Gallery/inventory.json`: written by `SirilWork/PI/py/inventory.py`. Sessions with 0 stacked
-  frames are left out of the tables and totals.
+- `inventory.json`: written by `SirilWork/PI/py/inventory.py` on the processing VM. Sessions with 0
+  stacked frames are left out of the tables and totals. Optional: when the file is missing the site
+  is built without hours, goal bars or session tables (an empty file is still refused). See
+  [PROCESSING.md](PROCESSING.md#2-inventoryjson) for getting it into the drop folder.
 - `Finished/*.jpg`. TIFs are never published.
 
 See [PROCESSING.md](PROCESSING.md) for getting a newly processed image into the gallery.
@@ -48,30 +74,24 @@ with neither a natural nor a HOO image is skipped.
 
 ## Deploy on boris
 
-One-time setup on boris (Unraid, 192.168.1.3):
-
 ```
-make deploy                                  # creates /mnt/user/appdata/astrogallery and fills it
-ssh root@192.168.1.3 'cd /mnt/user/appdata/astrogallery && docker compose up -d'
+make deploy
 ```
 
-Without the Compose plugin, the equivalent is:
+copies `gallery.py`, `minyaml.py`, `watch.py`, `static/` and the `Dockerfile` to
+`/mnt/user/appdata/astrogallery/app` on boris (Unraid, 192.168.1.3), plus `docker-compose.yml`,
+`nginx.conf` and a `.env` holding `GALLERY_DROP`, then runs `docker compose up -d --build` there.
+That starts two containers:
 
-```
-docker run -d --name astrogallery --restart unless-stopped -p 8088:80 \
-  -v /mnt/user/appdata/astrogallery/site:/usr/share/nginx/html:ro \
-  -v /mnt/user/appdata/astrogallery/nginx.conf:/etc/nginx/conf.d/default.conf:ro nginx:alpine
-```
+- `astrogallery-builder`: built from `app/`, mounts the drop folder read-only at `/data` and
+  writes `site/`. `ssh root@192.168.1.3 docker logs -f astrogallery-builder` shows each build.
+- `astrogallery`: `nginx:alpine` serving `site/` read-only on port 8088. Nginx Proxy Manager
+  forwards `astro.home.vandekieft.net` -> `192.168.1.3:8088` (LAN only).
 
-The container serves `site/` read-only on port 8088. Then add a Nginx Proxy Manager host
-(suggested `astro.home.vandekieft.net` -> `192.168.1.3:8088`, LAN only).
-
-After that, `make deploy` only rsyncs changed files; nginx needs no reload. If `deploy/nginx.conf`
-changes, deploy.sh restarts the container.
-
-Override the target with `make deploy BORIS=user@host APPDATA=/path`.
+Rerun `make deploy` only when the code changes. Override the target with
+`make deploy BORIS=user@host APPDATA=/path GALLERY_DROP=/mnt/user/<share>/Gallery`.
 
 ## Rebuild loop
 
-After a processing session: rerun `inventory.py`, update picks.yaml if a new image replaces a pick,
-then `make all`.
+After a processing session: copy the JPG into the drop folder's `Finished/`, refresh
+`inventory.json` there, update picks.yaml if a new image replaces a pick. The builder does the rest.

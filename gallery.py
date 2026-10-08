@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Build the astro gallery: picks.yaml + inventory.json + Finished/*.jpg -> site/.
 
-    python3 gallery.py [--src /Volumes/scopessd] [--out site] [--jobs N]
+    python3 gallery.py [--src /Volumes/scopessd] [--finished DIR] [--picks FILE]
+                       [--inventory FILE] [--out site] [--jobs N]
+
+Every path also has a GALLERY_* environment variable (see --help); the builder container on
+boris uses those. inventory.json is optional: without it the site has no hours or sessions.
 
 Reads only; nothing under --src is ever written. Web derivatives (600 px thumb, 2560 px
 display, both progressive sRGB JPEG) and a byte copy of the full-res JPG go in site/img and
@@ -169,12 +173,16 @@ class Images:
 
 def load_targets(picks_path, inv_path, images):
     picks = minyaml.load(picks_path)
-    with open(inv_path) as f:
-        inventory = json.load(f)
-    if not inventory:
-        sys.exit(f"{inv_path} has no sessions; was inventory.py run where ~/mnt/scopessd does not exist?")
+    if os.path.isfile(inv_path):
+        with open(inv_path) as f:
+            inventory = json.load(f)
+        if not inventory:
+            sys.exit(f"{inv_path} has no sessions; was inventory.py run where ~/mnt/scopessd does not exist?")
+    else:  # images still publish; hours, nights and session tables are left out
+        warn(f"no inventory at {inv_path}; building without session data")
+        inventory = None
     by_key = {}
-    for s in inventory:
+    for s in inventory or []:
         by_key.setdefault(f"{s['scope']}|{s['target']}", []).append(s)
 
     targets, seen = [], set()
@@ -207,7 +215,7 @@ def load_targets(picks_path, inv_path, images):
 
         sessions = []
         for key in p.get("sessions") or []:
-            if key not in by_key:
+            if inventory is not None and key not in by_key:
                 warn(f"{tid}: session key {key!r} not in inventory.json")
             sessions += [s for s in by_key.get(key, []) if s.get("frames", 0) > 0]
         sessions.sort(key=lambda s: (s["night"], s["scope"], s.get("exp", 0)))
@@ -411,16 +419,20 @@ def write(path, text):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--src", default=os.environ.get("SCOPESSD", "/Volumes/scopessd"),
-                    help="scopessd root (default $SCOPESSD or /Volumes/scopessd)")
-    ap.add_argument("--picks", help="default <src>/Gallery/picks.yaml")
-    ap.add_argument("--inventory", help="default <src>/Gallery/inventory.json")
-    ap.add_argument("--out", default=os.path.join(HERE, "site"))
-    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
+    env = os.environ.get
+    ap.add_argument("--src", default=env("GALLERY_SRC") or env("SCOPESSD") or "/Volumes/scopessd",
+                    help="scopessd-style root (default $GALLERY_SRC, $SCOPESSD or /Volumes/scopessd)")
+    ap.add_argument("--finished", default=env("GALLERY_FINISHED"),
+                    help="folder of finished JPGs (default $GALLERY_FINISHED or <src>/Finished)")
+    ap.add_argument("--picks", default=env("GALLERY_PICKS"),
+                    help="default $GALLERY_PICKS or <src>/Gallery/picks.yaml")
+    ap.add_argument("--inventory", default=env("GALLERY_INVENTORY"),
+                    help="default $GALLERY_INVENTORY or <src>/Gallery/inventory.json; optional")
+    ap.add_argument("--out", default=env("GALLERY_OUT") or os.path.join(HERE, "site"))
+    ap.add_argument("--jobs", type=int, default=int(env("GALLERY_JOBS") or 0) or os.cpu_count() or 4)
     a = ap.parse_args()
 
-    finished = os.path.join(a.src, "Finished")
-    images = Images(finished, a.out)
+    images = Images(a.finished or os.path.join(a.src, "Finished"), a.out)
     targets = load_targets(a.picks or os.path.join(a.src, "Gallery", "picks.yaml"),
                            a.inventory or os.path.join(a.src, "Gallery", "inventory.json"), images)
     images.build(a.jobs)
