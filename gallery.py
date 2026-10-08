@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Build the astro gallery: picks.yaml + Finished/*.jpg + capture sessions -> site/.
+"""Build the astro gallery: Finished/*.jpg (+ picks.yaml overrides) + capture sessions -> site/.
 
     python3 gallery.py --root /mnt/user/Telescopes [--finished DIR] [--picks FILE]
-                       [--inventory FILE] [--source DIR] [--out site] [--jobs N]
+                       [--inventory FILE | --no-inventory] [--source DIR] [--nina DIR]
+                       [--out site] [--jobs N]
 
---root is the telescopes share: Finished/, Gallery/picks.yaml and Source Data/. Hours and
-sessions come from scanning Source Data/ (inventory.py), unless Gallery/inventory.json exists or
---inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
+--root is the telescopes share: Finished/, Gallery/picks.yaml, Source Data/ and NINA/. Targets
+and their images come from the Finished/ file names (autopicks.py); picks.yaml, if present,
+overrides them field by field. Hours and sessions come from scanning Source Data/ and NINA/
+(inventory.py), unless Gallery/inventory.json exists or --inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
 builder container on boris uses those. Without sessions the site has no hours.
 
 Reads only; nothing under --root is ever written. Web derivatives (600 px thumb, 2560 px
@@ -26,6 +28,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from PIL import Image, ImageCms, ImageOps
 
+import autopicks
 import inventory as inventory_scan
 import minyaml
 
@@ -174,30 +177,38 @@ class Images:
 
 # ---------------------------------------------------------------- data
 
-def input_paths(root=None, finished=None, picks=None, inventory=None, source=None):
-    """(finished, picks, inventory, source) from the arguments, else GALLERY_* variables, else
-    under root (GALLERY_ROOT). inventory is None unless given or <root>/Gallery/inventory.json
-    exists; it wins over scanning source. watch.py uses this too."""
+def input_paths(root=None, finished=None, picks=None, inventory=None, source=None, nina=None):
+    """{finished, picks, inventory, source, nina, reject} from the arguments, else GALLERY_*
+    variables, else under root (GALLERY_ROOT). inventory is None unless given or
+    <root>/Gallery/inventory.json exists; it wins over scanning source and nina. inventory
+    "none" forces the scan. watch.py and autopicks.py use this too."""
     env = os.environ.get
     root = root or env("GALLERY_ROOT")
     finished = finished or env("GALLERY_FINISHED")
     picks = picks or env("GALLERY_PICKS")
     inventory = inventory or env("GALLERY_INVENTORY")
     source = source or env("GALLERY_SOURCE")
+    nina = nina or env("GALLERY_NINA")
+    reject = env("GALLERY_NINA_REJECT")
     if root:
         finished = finished or os.path.join(root, "Finished")
         picks = picks or os.path.join(root, "Gallery", "picks.yaml")
         source = source or os.path.join(root, "Source Data")
+        nina = nina or os.path.join(root, "NINA")
+        reject = reject or inventory_scan.find_reject(root, nina)
         inv = os.path.join(root, "Gallery", "inventory.json")
         inventory = inventory or (inv if os.path.isfile(inv) else None)
-    if not (finished and picks):
-        sys.exit("say where the telescopes share is: --root DIR or GALLERY_ROOT "
-                 "(or both --finished and --picks)")
-    return finished, picks, inventory, source
+    if not finished:
+        sys.exit("say where the telescopes share is: --root DIR or GALLERY_ROOT (or --finished)")
+    if str(inventory).lower() == "none":
+        inventory = None
+    return dict(finished=finished, picks=picks, inventory=inventory, source=source, nina=nina, reject=reject)
 
 
-def load_inventory(inv_path, source):
-    """Session list from inv_path if set, else from scanning source; None when neither has any."""
+def load_inventory(paths):
+    """Session list from paths["inventory"] if set, else from scanning Source Data and NINA;
+    None when neither has any."""
+    inv_path, source, nina = paths["inventory"], paths["source"], paths["nina"]
     if inv_path:
         with open(inv_path) as f:
             sessions = json.load(f)
@@ -205,25 +216,45 @@ def load_inventory(inv_path, source):
             sys.exit(f"{inv_path} has no sessions; delete it to scan Source Data instead")
         print(f"sessions: {len(sessions)} from {inv_path}", file=sys.stderr)
         return sessions
-    if source and os.path.isdir(source):
-        sessions = inventory_scan.scan(source)
+    have = [p for p in (source, nina) if p and os.path.isdir(p)]
+    if have:
+        sessions = inventory_scan.scan(source, nina, paths["reject"])
         if sessions:
-            print(f"sessions: {len(sessions)} from {source}", file=sys.stderr)
+            hours = sum(s["hours"] for s in sessions)
+            print(f"sessions: {len(sessions)} ({hours:.1f} h) from {' + '.join(have)}"
+                  + (f", minus {paths['reject']}" if paths["reject"] and nina in have else ""), file=sys.stderr)
             return sessions
-        warn(f"no capture sessions found in {source}; building without session data")
+        warn(f"no capture sessions found in {' or '.join(have)}; building without session data")
     else:  # images still publish; hours, nights and session tables are left out
-        warn(f"no inventory.json and no Source Data folder ({source}); building without session data")
+        warn(f"no inventory.json and no Source Data or NINA folder ({source}); building without session data")
     return None
 
 
+def load_picks(picks_path):
+    """The targets list of picks.yaml; [] when the file is missing or empty."""
+    if not (picks_path and os.path.isfile(picks_path)):
+        if picks_path:
+            print(f"picks: no {picks_path}, every target is automatic", file=sys.stderr)
+        return []
+    return (minyaml.load(picks_path) or {}).get("targets") or []
+
+
 def load_targets(picks_path, inventory, images):
-    picks = minyaml.load(picks_path)
+    """picks.yaml merged with the automatic picks from the Finished/ file names (autopicks.py)."""
+    try:
+        files = sorted(e.name for e in os.scandir(images.src_dir) if e.is_file())
+    except OSError as e:
+        sys.exit(f"cannot read {images.src_dir}: {e}")
+    picks = load_picks(picks_path)
+    entries = autopicks.resolve(picks, files, inventory)
+    print(f"picks: {len(picks)} from picks.yaml, {len(entries) - len(picks)} new from Finished/ names",
+          file=sys.stderr)
     by_key = {}
     for s in inventory or []:
         by_key.setdefault(f"{s['scope']}|{s['target']}", []).append(s)
 
     targets, seen = [], set()
-    for p in picks.get("targets") or []:
+    for p in entries:
         tid = str(p.get("id") or "")
         if not tid or tid in seen:
             warn(f"pick without a unique id: {p.get('name')!r}")
@@ -461,15 +492,20 @@ def main():
     ap.add_argument("--finished", help="folder of finished JPGs (default $GALLERY_FINISHED or <root>/Finished)")
     ap.add_argument("--picks", help="default $GALLERY_PICKS or <root>/Gallery/picks.yaml")
     ap.add_argument("--inventory", help="sessions file; default $GALLERY_INVENTORY or "
-                    "<root>/Gallery/inventory.json if it exists, else Source Data is scanned")
+                    "<root>/Gallery/inventory.json if it exists, else Source Data and NINA are scanned")
+    ap.add_argument("--no-inventory", action="store_true",
+                    help="scan even if inventory.json exists (same as GALLERY_INVENTORY=none)")
     ap.add_argument("--source", help="Source Data folder to scan (default $GALLERY_SOURCE or <root>/Source Data)")
+    ap.add_argument("--nina", help="NINA folder to scan (default $GALLERY_NINA or <root>/NINA); subs listed in "
+                    "<root>/SirilWork/PI/nina_reject.json or <root>/NINA/nina_reject.json "
+                    "($GALLERY_NINA_REJECT) are left out")
     ap.add_argument("--out", default=env("GALLERY_OUT") or os.path.join(HERE, "site"))
     ap.add_argument("--jobs", type=int, default=int(env("GALLERY_JOBS") or 0) or os.cpu_count() or 4)
     a = ap.parse_args()
 
-    finished, picks, inv_path, source = input_paths(a.root, a.finished, a.picks, a.inventory, a.source)
-    images = Images(finished, a.out)
-    targets = load_targets(picks, load_inventory(inv_path, source), images)
+    paths = input_paths(a.root, a.finished, a.picks, "none" if a.no_inventory else a.inventory, a.source, a.nina)
+    images = Images(paths["finished"], a.out)
+    targets = load_targets(paths["picks"], load_inventory(paths), images)
     images.build(a.jobs)
 
     generated = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
