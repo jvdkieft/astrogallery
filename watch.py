@@ -4,8 +4,8 @@
     python3 watch.py [--interval 60]
 
 Polls the files gallery.py reads (GALLERY_ROOT and the other GALLERY_* variables, see
-gallery.py --help): picks.yaml, the JPGs in Finished/, and the stacks and shotsInfo.json files
-in Source Data/ (or inventory.json when that is used instead). Reruns gallery.py once they have
+gallery.py --help): picks.yaml, the JPGs in Finished/, the stacks and shotsInfo.json files
+in Source Data/ and the subs in NINA/ (or inventory.json when that is used instead). Reruns gallery.py once they have
 stopped changing for one poll, so a JPG that is still being copied over SMB is not picked up
 half-written. Polling rather than inotify because writes that arrive through Unraid's
 /mnt/user (shfs) or SMB do not reliably raise events.
@@ -26,10 +26,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 def signature():
     """(name, mtime, size) of every input file; top level of Finished/ only, like gallery.py.
     Paths are resolved on every poll, so adding or removing Gallery/inventory.json is noticed."""
-    finished, picks, inv_path, source = input_paths()
+    p = input_paths()
+    finished, picks, inv_path = p["finished"], p["picks"], p["inventory"]
     files = [picks, inv_path or os.path.join(os.path.dirname(picks), "inventory.json")]
-    if not inv_path and source and os.path.isdir(source):
-        files += inventory.inputs(source)
+    if not inv_path:
+        files += inventory.inputs(p["source"], p["nina"], p["reject"])
     sig = []
     for path in files:
         try:

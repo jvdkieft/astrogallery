@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""Capture sessions (frames the scope STACKED x exposure) found under a Source Data folder.
+"""Capture sessions (frames the scope STACKED x exposure) found under a Source Data folder
+and a NINA folder.
 
-    python3 inventory.py "<root>/Source Data" [out.json]
+    python3 inventory.py "<root>/Source Data" [out.json] [--nina "<root>/NINA"] [--reject FILE]
 
-Port of SirilWork/PI/py/inventory.py with the folder as an argument instead of
+Port of SirilWork/PI/py/inventory.py with the folders as arguments instead of
 ~/mnt/scopessd, so the builder on boris can scan the telescopes share itself. gallery.py calls
 scan() directly; the command line prints one line per session (and writes out.json if given).
 
-    Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
-    Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
+    Source Data/Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
+    Source Data/Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
+    NINA/<target>/<date>/LIGHT/NNNN.fits      Seestar run from NINA: raw subs, no on-scope stacking.
+        Every sub counts except those listed in the reject file (a JSON list of paths relative to
+        NINA/, e.g. "M45/2026-10-07/LIGHT/0064.fits"), grouped by FILTER and EXPTIME.
 """
 import datetime as dt
 import glob
@@ -67,18 +71,95 @@ def dwarf_dirs(src):
     return sorted(glob.glob(os.path.join(glob.escape(src), "Dwarf 3", "Astronomy", "DWARF_RAW_*")))
 
 
-def inputs(src):
+# NINA folder name -> target as the Seestar app would name it
+NINA_NAMES = {"Double Cluster": "NGC 869", "M45": "M 45"}
+NINA_FILTERS = {"IR": "IRCUT", "LP": "LP", "": "none"}
+
+
+def nina_subs(nina):
+    """{LIGHT folder: [sub files]} under nina."""
+    out = {}
+    for d in sorted(glob.glob(os.path.join(glob.escape(nina), "*", "*", "LIGHT"))):
+        out[d] = sorted(glob.glob(os.path.join(glob.escape(d), "[0-9]*.fits")))
+    return out
+
+
+def inputs(src, nina=None, reject=None):
     """Every file scan() reads, so a watcher can stat them instead of rescanning."""
     files = []
-    for d, _ in seestar_dirs(src):
-        files += glob.glob(os.path.join(glob.escape(d), "Stacked_*.fit"))
-    files += [os.path.join(d, "shotsInfo.json") for d in dwarf_dirs(src)]
+    if src and os.path.isdir(src):
+        for d, _ in seestar_dirs(src):
+            files += glob.glob(os.path.join(glob.escape(d), "Stacked_*.fit"))
+        files += [os.path.join(d, "shotsInfo.json") for d in dwarf_dirs(src)]
+    if nina and os.path.isdir(nina):
+        for subs in nina_subs(nina).values():
+            files += subs
+    if reject:
+        files.append(reject)
     return files
 
 
-def scan(src):
+def load_reject(path):
+    try:
+        with open(path) as f:
+            return set(json.load(f))
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def fits_card(hdr, key, default=""):
+    """Value of a FITS header card, quotes and comment stripped."""
+    k = f"{key:<8}="
+    for i in range(0, len(hdr) - 79, 80):
+        card = hdr[i:i + 80]
+        if card.startswith(k):
+            return card[9:].split("/")[0].strip().strip("'").strip()
+        if card.startswith("END     "):
+            break
+    return default
+
+
+def scan_nina(nina, reject=None):
     out = []
-    for d, tgt in seestar_dirs(src):
+    rej = load_reject(reject) if reject else set()
+    for light, subs in nina_subs(nina).items():
+        tdir, day = os.path.relpath(light, nina).split(os.sep)[:2]
+        grp = {}
+        for f in subs:
+            if os.path.relpath(f, nina).replace(os.sep, "/") in rej:
+                continue
+            try:
+                with open(f, "rb") as fh:
+                    hdr = fh.read(2880 * 3).decode("latin1")
+                flt = fits_card(hdr, "FILTER")
+                flt = NINA_FILTERS.get(flt, flt)
+                exp = float(fits_card(hdr, "EXPTIME", "0"))
+                ts = dt.datetime.strptime(fits_card(hdr, "DATE-LOC")[:19], "%Y-%m-%dT%H:%M:%S")
+            except (OSError, ValueError):
+                continue
+            g = grp.setdefault((flt, exp), [0, ts])
+            g[0] += 1
+        for (flt, exp), (n, ts) in grp.items():
+            out.append(dict(scope="S30P", folder=f"NINA/{tdir}/{day}", target=NINA_NAMES.get(tdir, tdir),
+                            night=evening(ts), filter=flt, exp=exp, frames=n, nina=True))
+    return out
+
+
+def find_reject(root, nina=None):
+    """The NINA reject list on the share: SirilWork/PI/nina_reject.json, else NINA/nina_reject.json."""
+    for p in (os.path.join(root, "SirilWork", "PI", "nina_reject.json"),
+              os.path.join(nina or os.path.join(root, "NINA"), "nina_reject.json")):
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def scan(src, nina=None, reject=None):
+    """Sessions in src (Source Data) and, when given, nina (the NINA folder)."""
+    out = []
+    if not (src and os.path.isdir(src)):
+        src = None
+    for d, tgt in seestar_dirs(src) if src else ():
         best = {}
         for f in glob.glob(os.path.join(glob.escape(d), "Stacked_*.fit")):
             m = SEESTAR_RE.match(os.path.basename(f))
@@ -102,7 +183,9 @@ def scan(src):
                 best[k] = dict(scope="S30P", folder=tgt, target=name, night=k[0], filter=flt, exp=exp,
                                frames=n, file=os.path.basename(f))
         out += best.values()
-    for d in dwarf_dirs(src):
+    if nina and os.path.isdir(nina):
+        out += scan_nina(nina, reject)
+    for d in dwarf_dirs(src) if src else ():
         j = os.path.join(d, "shotsInfo.json")
         m = re.search(r"(\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})", os.path.basename(d))
         if not m or not os.path.exists(j):
@@ -128,11 +211,20 @@ def scan(src):
 
 
 def main():
-    if len(sys.argv) < 2:
-        sys.exit(__doc__)
-    out = scan(sys.argv[1])
-    if len(sys.argv) > 2:
-        with open(sys.argv[2], "w") as f:
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("source", help="the Source Data folder")
+    ap.add_argument("out", nargs="?", help="also write the sessions to this JSON file")
+    ap.add_argument("--nina", help="the NINA folder (default: NINA next to the Source Data folder)")
+    ap.add_argument("--reject", help="NINA subs to leave out (default: SirilWork/PI/nina_reject.json "
+                    "or NINA/nina_reject.json next to the Source Data folder)")
+    a = ap.parse_args()
+    root = os.path.dirname(os.path.abspath(a.source))
+    nina = a.nina or os.path.join(root, "NINA")
+    reject = a.reject or find_reject(root, nina)
+    out = scan(a.source, nina, reject)
+    if a.out:
+        with open(a.out, "w") as f:
             json.dump(out, f, indent=1)
     for o in sorted(out, key=lambda o: (o["target"], o["night"])):
         if o["exp"] < 1:

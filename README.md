@@ -5,22 +5,26 @@ share (`\\boris\Telescopes`, `/mnt/user/Telescopes` on boris) and rebuilds the s
 something in it changes. Nothing comes from scopessd any more.
 
 ```
-Telescopes/Finished/*.jpg + Gallery/picks.yaml + Source Data/  --watch.py + gallery.py (boris)-->  site/  --nginx:alpine-->  :8088
+Telescopes/Finished/*.jpg + Source Data/ + NINA/ (+ Gallery/picks.yaml)  --watch.py + gallery.py (boris)-->  site/  --nginx:alpine-->  :8088
 ```
 
-The share keeps its usual layout; the gallery reads three things from it:
+The share keeps its usual layout; the gallery reads these from it:
 
 ```
 Telescopes/
-  Finished/          finished JPGs, top level only (TIFs and subfolders are ignored)
-  Gallery/
-    picks.yaml       what is shown
-    inventory.json   optional; only when present it replaces scanning Source Data
+  Finished/          finished JPGs, top level only (TIFs and subfolders are ignored); their
+                     names decide the targets and images (autopicks.py)
   Source Data/       Seestar and Dwarf captures; hours and sessions are counted from here
+  NINA/              Seestar subs captured with NINA; counted too
+  SirilWork/PI/nina_reject.json   NINA subs left out of the count (or NINA/nina_reject.json)
+  Gallery/
+    picks.yaml       optional overrides of the automatic picks
+    inventory.json   optional; only when present it replaces scanning Source Data and NINA
 ```
 
-Drop a JPG in `Finished/`, point picks.yaml at it, and the live site updates within a couple of
-minutes. New captures in `Source Data/` update the hours the same way. The builder polls every 60 s and builds once the inputs have stopped changing for one poll,
+Drop a correctly named JPG in `Finished/` and the live site updates within a couple of minutes:
+a new object gets its own card, a version with more nights replaces the older one. New captures in
+`Source Data/` or `NINA/` update the hours the same way. Nothing has to be edited. The builder polls every 60 s and builds once the inputs have stopped changing for one poll,
 so a file still being copied is not picked up half-written.
 
 ## Use
@@ -48,24 +52,34 @@ Paths are set by flag or environment variable; the builder container uses the va
 | finished JPGs | `--finished` | `GALLERY_FINISHED` | `<root>/Finished` |
 | picks.yaml | `--picks` | `GALLERY_PICKS` | `<root>/Gallery/picks.yaml` |
 | capture data | `--source` | `GALLERY_SOURCE` | `<root>/Source Data` |
-| inventory.json | `--inventory` | `GALLERY_INVENTORY` | `<root>/Gallery/inventory.json` if it exists |
+| NINA subs | `--nina` | `GALLERY_NINA` | `<root>/NINA` |
+| NINA rejects | | `GALLERY_NINA_REJECT` | `<root>/SirilWork/PI/nina_reject.json`, else `<root>/NINA/nina_reject.json` |
+| inventory.json | `--inventory`, `--no-inventory` | `GALLERY_INVENTORY` (`none` = scan) | `<root>/Gallery/inventory.json` if it exists |
 | output | `--out` | `GALLERY_OUT` | `./site` |
 
-- `picks.yaml`: one entry per target. `natural`, `hoo`, `alt: [...]`, `inset: {natural, hoo}`
-  are file names in `Finished/`. `sessions` are `"<scope>|<target>"` keys matched exactly against
-  inventory.json. `goal_h` is the depth goal. `show: false` hides the target.
-- Sessions: `inventory.py` (a port of `SirilWork/PI/py/inventory.py` that takes the folder as an
-  argument) scans `Source Data/` on every build: Seestar `Stacked_*.fit` names and Dwarf
-  `shotsInfo.json`. Sessions with 0 stacked frames are left out of the tables and totals. If
-  `Gallery/inventory.json` exists it is used instead (an empty one is refused); delete it to go
-  back to scanning. With neither, the site is built without hours, goal bars or session tables.
-  `python3 inventory.py "<root>/Source Data"` prints what the scan finds.
+- Targets: `autopicks.py` groups the `Finished/` JPGs by catalogue number and picks the main
+  image (most nights, latest, PixInsight), its HOO twin, a detail inset and other versions, and
+  matches the capture sessions; name, kind and page id come from its `CATALOGUE` table. See
+  [PROCESSING.md](PROCESSING.md#how-the-automatic-picks-work-autopickspy).
+  `python3 autopicks.py --root <share>` prints the result; `--selftest` checks the rules.
+- `picks.yaml` (optional): one entry per target to override. `natural`, `hoo`, `alt: [...]`,
+  `inset: {natural, hoo}` are file names in `Finished/`. `sessions` are `"<scope>|<target>"` keys.
+  `goal_h` is the depth goal. `show: false` hides the target. Every field set wins; the rest is
+  automatic. `python3 autopicks.py --root <share> --slim` prints it with the automatic fields left out.
+- Sessions: `inventory.py` (a port of `SirilWork/PI/py/inventory.py` that takes the folders as
+  arguments) scans `Source Data/` and `NINA/` on every build: Seestar `Stacked_*.fit` names, NINA
+  subs (FITS headers, minus the reject list) and Dwarf `shotsInfo.json`. Sessions with 0 stacked
+  frames are left out of the tables and totals. If `Gallery/inventory.json` exists it is used
+  instead (an empty one is refused); delete it to go back to scanning. With neither, the site is
+  built without hours, goal bars or session tables. `python3 inventory.py "<root>/Source Data"`
+  prints what the scan finds.
 - `Finished/*.jpg`. TIFs are never published.
 
 See [PROCESSING.md](PROCESSING.md) for getting a newly processed image into the gallery.
 
 Missing files and session keys that are not in the inventory are reported as warnings; a target
-with neither a natural nor a HOO image is skipped.
+with neither a natural nor a HOO image is skipped. Files whose names do not follow the naming
+are ignored by the automatic picks (picks.yaml can still use them).
 
 ## Output
 
@@ -85,7 +99,7 @@ with neither a natural nor a HOO image is skipped.
 make deploy
 ```
 
-copies `gallery.py`, `inventory.py`, `minyaml.py`, `watch.py`, `static/` and the `Dockerfile` to
+copies `gallery.py`, `autopicks.py`, `inventory.py`, `minyaml.py`, `watch.py`, `static/` and the `Dockerfile` to
 `/mnt/user/appdata/astrogallery/app` on boris (Unraid, 192.168.1.3), plus `docker-compose.yml`,
 `nginx.conf` and a `.env` holding `GALLERY_ROOT`, then runs `docker compose up -d --build` there.
 That starts two containers:
@@ -100,6 +114,7 @@ Rerun `make deploy` only when the code changes. Override the target with
 
 ## Rebuild loop
 
-After a processing session: copy the JPG into `Finished/` on the share and update
-`Gallery/picks.yaml` if a new image replaces a pick. New capture data in `Source Data/` is counted
-automatically. The builder does the rest.
+After a processing session: copy the JPG into `Finished/` on the share. New capture data in
+`Source Data/` and `NINA/` is counted automatically. The builder does the rest. Edit
+`Gallery/picks.yaml` only to correct an automatic choice; a pinned `natural`/`hoo` there stops
+that target from updating by itself.
