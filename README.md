@@ -35,6 +35,11 @@ make site      # build site/ locally from the share at /Volumes/Telescopes (TELE
 make preview   # build locally, then serve it at http://localhost:8000
 ```
 
+```
+make archive-check   # what the share is missing from the SSD (Source Data, NINA, Finished, nina_reject.json)
+make archive         # copy it: adds files, replaces empty or older copies, never deletes (archive.py)
+```
+
 `site/` also works opened straight from disk (`open site/index.html`); there is no JavaScript.
 
 On Windows: `python gallery.py --root Y:\` with the share mapped as Y:.

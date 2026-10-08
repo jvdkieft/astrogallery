@@ -1,4 +1,4 @@
-# astrogallery: make site | preview (local) | deploy (boris builds the live site itself)
+# astrogallery: make site | preview (local) | deploy (boris builds the live site itself) | archive (SSD -> share)
 # the telescopes share (smb://boris/Telescopes) as mounted on this machine
 TELESCOPES ?= /Volumes/Telescopes
 PORT     ?= 8000
@@ -8,7 +8,7 @@ APPDATA  ?= /mnt/user/appdata/astrogallery
 # the same share on boris: Finished/, Source Data/, NINA/, Gallery/picks.yaml
 GALLERY_ROOT ?= /mnt/user/Telescopes
 
-.PHONY: all site preview deploy clean
+.PHONY: all site preview deploy archive archive-check clean
 
 all: deploy
 
@@ -21,6 +21,13 @@ preview: site
 
 deploy:
 	BORIS="$(BORIS)" APPDATA="$(APPDATA)" GALLERY_ROOT="$(GALLERY_ROOT)" ./deploy/deploy.sh
+
+# copy what the share is missing from the SSD (Source Data, NINA, Finished, nina_reject.json); never deletes
+archive:
+	BORIS="$(BORIS)" GALLERY_ROOT="$(GALLERY_ROOT)" python3 archive.py
+
+archive-check:
+	BORIS="$(BORIS)" GALLERY_ROOT="$(GALLERY_ROOT)" python3 archive.py --dry-run
 
 clean:
 	rm -rf site

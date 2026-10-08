@@ -74,7 +74,11 @@ from file names. The builder scans it on every build with `inventory.py` (same r
   `SirilWork/PI/nina_reject.json` (or `NINA/nina_reject.json`), grouped by FILTER and EXPTIME.
 - Dwarf 3: `Source Data/Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json` (`shotsStacked`).
 
-New data only has to be copied to the share; there is nothing to rerun. To see what the scan finds
+New data only has to be copied to the share; there is nothing to rerun. Joe processes on scopessd
+and archives to the share afterwards; `make archive` on the Mac (`make archive-check` first to see
+what it would copy) copies `Source Data/`, `NINA/`, `Finished/` and `SirilWork/PI/nina_reject.json`
+across. It only adds files and replaces copies on the share that are empty or older, and never
+deletes. To see what the scan finds
 (one line per session):
 
 ```
