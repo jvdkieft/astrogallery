@@ -5,7 +5,7 @@ PORT     ?= 8000
 # boris (Unraid). Override on the command line, e.g. make deploy BORIS=root@boris.local
 BORIS    ?= root@192.168.1.3
 APPDATA  ?= /mnt/user/appdata/astrogallery
-# the same share on boris: Finished/, Gallery/picks.yaml, Source Data/
+# the same share on boris: Finished/, Source Data/, NINA/, Gallery/picks.yaml
 GALLERY_ROOT ?= /mnt/user/Telescopes
 
 .PHONY: all site preview deploy clean
