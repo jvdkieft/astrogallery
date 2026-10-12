@@ -47,10 +47,11 @@ GROUPS = [
     ("reflection", "Reflection nebulae", ("reflection",)),
     ("snr", "Supernova remnants", ("supernova", "snr")),
     ("planetary", "Planetary nebulae", ("planetary",)),
+    ("clusters", "Star clusters", ("cluster",)),
     ("solar", "Solar system", ("solar system", "moon", "sun", "planet")),
     ("other", "Other", ()),
 ]
-GROUP_ORDER = ["emission", "reflection", "snr", "planetary", "galaxies", "solar", "other"]
+GROUP_ORDER = ["emission", "reflection", "snr", "planetary", "galaxies", "clusters", "solar", "other"]
 
 esc = html.escape
 
@@ -63,7 +64,11 @@ def group_of(kind):
     return "other"
 
 
+WARNINGS = []  # everything warn() said this build, for status.html
+
+
 def warn(msg):
+    WARNINGS.append(msg)
     print(f"warning: {msg}", file=sys.stderr)
 
 
@@ -123,6 +128,7 @@ class Images:
         except (OSError, ValueError):
             self.manifest = {}
         self.wanted = {}  # slug -> source file name
+        self.failed = set()  # slugs with no usable derivative after build()
 
     def add(self, slug, name):
         """Register `name` (a file in Finished/) under `slug`; returns the slug or None if missing."""
@@ -156,7 +162,18 @@ class Images:
                          (os.path.join(self.src_dir, key["src"]), *self.paths(slug))))
                         for slug, key in todo]
                 for slug, key, fut in futs:
-                    self.manifest[slug] = {**key, **fut.result()}
+                    try:
+                        self.manifest[slug] = {**key, **fut.result()}
+                    except Exception as e:  # unreadable or half-copied JPG: keep the rest of the site going
+                        old = self.manifest.get(slug)
+                        if old and all(map(os.path.exists, self.paths(slug))):
+                            warn(f"cannot read {key['src']} ({e}); still showing {old['src']}")
+                            self.wanted[slug] = old["src"]
+                        else:
+                            warn(f"cannot read {key['src']} ({e}); left out")
+                            self.failed.add(slug)
+                            del self.wanted[slug]
+                        continue
                     print(f"  {slug}", file=sys.stderr)
         else:
             print(f"images: all {len(self.wanted)} up to date", file=sys.stderr)
@@ -279,7 +296,7 @@ def load_targets(picks_path, inventory, images):
         if isinstance(alts, str):
             alts = [alts]
         t["alts"] = [s for s in (images.add(f"{tid}-alt{i + 1}", a) for i, a in enumerate(alts)) if s]
-        t["src"] = dict(images.wanted)  # slug -> source name, for captions
+        t["src"] = images.wanted  # slug -> source name, for captions
 
         sessions = []
         for key in p.get("sessions") or []:
@@ -294,6 +311,21 @@ def load_targets(picks_path, inventory, images):
         t["filters"] = list(dict.fromkeys(filter_name(s) for s in sessions))
         targets.append(t)
     return targets
+
+
+def drop_failed(targets, images):
+    """Targets without the images that could not be read; a target left with no main image goes."""
+    f, out = images.failed, []
+    for t in targets:
+        t["natural"] = None if t["natural"] in f else t["natural"]
+        t["hoo"] = None if t["hoo"] in f else t["hoo"]
+        if not (t["natural"] or t["hoo"]):
+            warn(f"{t['id']}: no readable natural or hoo image, skipped")
+            continue
+        t["inset"] = {r: (x if x not in f else None) for r, x in t["inset"].items()}
+        t["alts"] = [x for x in t["alts"] if x not in f]
+        out.append(t)
+    return out
 
 
 def filter_name(s):
@@ -329,6 +361,11 @@ def depth_bar(t):
             f'<span class="depth-text">{esc(label)}</span></div>')
 
 
+FAVICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E"
+           "%3Ccircle cx='8' cy='8' r='7' fill='%230b0d12'/%3E%3Ccircle cx='8' cy='8' r='2.2' fill='%237fb4ff'/%3E"
+           "%3Ccircle cx='3.5' cy='4' r='.7' fill='%23e6e8ee'/%3E%3Ccircle cx='12' cy='11.5' r='.6' fill='%23e6e8ee'/%3E%3C/svg%3E")
+
+
 def page(title, body, generated, css="style.css", extra_head=""):
     return f"""<!doctype html>
 <html lang="en">
@@ -338,13 +375,19 @@ def page(title, body, generated, css="style.css", extra_head=""):
 <meta name="color-scheme" content="dark">
 <title>{esc(title)}</title>
 <link rel="stylesheet" href="{css}">
+<link rel="icon" href="{FAVICON}">
 {extra_head}</head>
 <body>
 {body}
-<footer class="site-footer">Built {generated}</footer>
+<footer class="site-footer">Built {generated} · <a href="status.html">build status</a></footer>
 </body>
 </html>
 """
+
+
+def card_kind(kind):
+    """The kind line of a card; "mosaic" is left to the badge."""
+    return ", ".join(w for w in (x.strip() for x in kind.split(",")) if w.lower() != "mosaic")
 
 
 def card(t, images):
@@ -364,7 +407,7 @@ def card(t, images):
   <img src="img/{slug}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}" loading="lazy">
   <div class="card-body">
     <h3>{esc(t['name'])}</h3>
-    <p class="kind">{esc(t['kind'])}{badges}</p>
+    <p class="kind">{esc(card_kind(t['kind']))}{badges}</p>
     {depth_bar(t)}
     {"".join(f'<p class="meta">{esc(m)}</p>' for m in meta)}
   </div>
@@ -425,6 +468,11 @@ def viewer(vid, nat, hoo, t, images):
 </div>"""
 
 
+def night_cell(night, one_year):
+    """YYYY-MM-DD; the year can be dropped on phones when every night is in the same year."""
+    return f'<span class="yr">{night[:5]}</span>{night[5:]}' if one_year else night
+
+
 def target_html(t, prev, nxt, images, generated):
     parts = [f"""<header class="target-header">
   <nav class="crumbs"><a href="index.html">← Gallery</a>
@@ -460,15 +508,16 @@ def target_html(t, prev, nxt, images, generated):
         parts.append('<section><h2>Other versions</h2><div class="alts">' + "".join(items) + "</div></section>")
 
     if t["sessions"]:
+        one_year = len({n[:4] for n in t["nights"]}) == 1
         rows = "".join(
-            f'<tr><td>{s["night"]}</td><td><span class="long">{SCOPES.get(s["scope"], s["scope"])}</span><span class="short">{s["scope"]}</span></td><td>{esc(filter_name(s))}</td>'
+            f'<tr><td>{night_cell(s["night"], one_year)}</td><td><span class="long">{SCOPES.get(s["scope"], s["scope"])}</span><span class="short">{s["scope"]}</span></td><td class="flt">{esc(filter_name(s))}</td>'
             f'<td class="num">{s["frames"]} × {fmt_exp(s["exp"])}</td><td class="num">{s["hours"]:.2f}</td></tr>'
             for s in t["sessions"])
         parts.append(f"""<section><h2>Sessions</h2>
-<div class="table-wrap"><table class="sessions">
-<thead><tr><th>Night</th><th>Scope</th><th>Filter</th><th class="num">Frames × exp</th><th class="num">Hours</th></tr></thead>
+<div class="table-wrap"><table class="sessions{' one-filter' if len(t['filters']) == 1 else ''}">
+<thead><tr><th>Night</th><th>Scope</th><th class="flt">Filter</th><th class="num">Frames × exp</th><th class="num">Hours</th></tr></thead>
 <tbody>{rows}</tbody>
-<tfoot><tr><td colspan="4">Total stacked</td><td class="num">{t['hours']:.2f}</td></tr></tfoot>
+<tfoot><tr><td colspan="2">Total stacked</td><td class="flt"></td><td></td><td class="num">{t['hours']:.2f}</td></tr></tfoot>
 </table></div>
 <p class="note">Frames the scope stacked, not frames taken. Night = local evening the session started.</p>
 </section>""")
@@ -476,7 +525,51 @@ def target_html(t, prev, nxt, images, generated):
     return page(f"{t['name']} · Astro gallery", "\n".join(parts), generated)
 
 
+def goal_of(t):
+    return f" / {t['goal']:g}" if t["goal"] else ""
+
+
+def status_html(targets, images, unnamed, generated):
+    """status.html: what this build did, so it can be checked without the builder log."""
+    version = os.environ.get("GALLERY_VERSION")
+    hours = sum(t["hours"] for t in targets)
+    parts = [f"""<header class="site-header">
+  <nav class="crumbs"><a href="index.html">← Gallery</a></nav>
+  <h1>Build status</h1>
+  <p class="sub">Built {generated}{f' · code {esc(version)}' if version else ''} · {len(targets)} targets ·
+    {len(images.wanted)} images · {hours:.1f} h</p>
+</header>
+<main class="status">"""]
+    if WARNINGS:
+        parts.append(f"<section><h2>Warnings ({len(WARNINGS)})</h2><ul class=\"warn\">"
+                     + "".join(f"<li>{esc(w)}</li>" for w in WARNINGS) + "</ul></section>")
+    else:
+        parts.append("<section><h2>Warnings</h2><p class=\"ok\">None.</p></section>")
+    if unnamed:
+        parts.append(f"<section><h2>Not published: names the gallery cannot read ({len(unnamed)})</h2>"
+                     "<p class=\"note\">These JPGs in Finished/ do not follow the naming in PROCESSING.md, "
+                     "so they are not on the site. Rename them, or use them from picks.yaml.</p><ul class=\"files\">"
+                     + "".join(f"<li>{esc(n)}</li>" for n in unnamed) + "</ul></section>")
+    rows = "".join(
+        f'<tr><td><a href="{t["id"]}.html">{esc(t["name"])}</a></td>'
+        f'<td class="file">{esc(images.wanted.get(t["hoo"] or t["natural"], ""))}</td>'
+        f'<td class="num">{t["hours"]:.1f}{goal_of(t)}</td>'
+        f'<td class="num">{len(t["nights"])}</td></tr>' for t in targets)
+    parts.append(f"""<section><h2>Targets</h2><div class="table-wrap"><table class="sessions">
+<thead><tr><th>Target</th><th>Main image</th><th class="num">Hours / goal</th><th class="num">Nights</th></tr></thead>
+<tbody>{rows}</tbody></table></div></section></main>""")
+    return page("Build status · Astro gallery", "\n".join(parts), generated)
+
+
 # ---------------------------------------------------------------- main
+
+def finished_jpgs(folder):
+    try:
+        return sorted(e.name for e in os.scandir(folder) if e.is_file()
+                      and e.name.lower().endswith((".jpg", ".jpeg")) and not e.name.startswith("."))
+    except OSError:
+        return []
+
 
 def write(path, text):
     tmp = path + ".tmp"
@@ -507,16 +600,20 @@ def main():
     images = Images(paths["finished"], a.out)
     targets = load_targets(paths["picks"], load_inventory(paths), images)
     images.build(a.jobs)
+    targets = drop_failed(targets, images)
+    used = set(images.wanted.values())
+    unnamed = [n for n in finished_jpgs(paths["finished"]) if n not in used and not autopicks.parse(n)]
 
-    generated = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    generated = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
-    keep = {"index.html", "style.css", ".manifest.json", "img", "full"}
+    keep = {"index.html", "status.html", "style.css", ".manifest.json", "img", "full"}
     write(os.path.join(a.out, "index.html"), index_html(ordered, images, generated))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
         nxt = ordered[n + 1] if n + 1 < len(ordered) else None
         write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, generated))
         keep.add(f"{t['id']}.html")
+    write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated))
     shutil.copyfile(os.path.join(HERE, "static", "style.css"), os.path.join(a.out, "style.css"))
     for name in os.listdir(a.out):  # pages of targets that were removed or hidden
         if name.endswith(".html") and name not in keep:

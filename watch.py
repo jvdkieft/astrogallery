@@ -12,6 +12,7 @@ half-written. Polling rather than inotify because writes that arrive through Unr
 Always builds once at startup.
 """
 import argparse
+import html
 import os
 import subprocess
 import sys
@@ -51,9 +52,33 @@ def signature():
 
 def build():
     t0 = time.time()
-    r = subprocess.run([sys.executable, os.path.join(HERE, "gallery.py")])
+    r = subprocess.run([sys.executable, os.path.join(HERE, "gallery.py")], stderr=subprocess.PIPE, text=True)
+    sys.stderr.write(r.stderr)
     status = "ok" if r.returncode == 0 else f"FAILED (exit {r.returncode}), retrying on next change"
     print(f"watch: build {status} in {time.time() - t0:.0f} s", file=sys.stderr, flush=True)
+    if r.returncode:
+        failed_status(r.stderr)
+
+
+def failed_status(log):
+    """Replace status.html with the failed build's log; the rest of the site stays as it was."""
+    out = os.environ.get("GALLERY_OUT") or os.path.join(HERE, "site")
+    when = time.strftime("%Y-%m-%d %H:%M %Z")
+    tail = html.escape("\n".join(log.splitlines()[-40:]))
+    page = (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width, initial-scale=1">'
+            f'<title>Build failed · Astro gallery</title><link rel="stylesheet" href="style.css"></head><body>'
+            f'<header class="site-header"><nav class="crumbs"><a href="index.html">← Gallery</a></nav>'
+            f'<h1>Build failed</h1><p class="sub">{when}. The gallery still shows the last good build; '
+            f'the next change on the share triggers another try.</p></header>'
+            f'<main class="status"><pre class="log">{tail}</pre></main></body></html>\n')
+    try:
+        os.makedirs(out, exist_ok=True)
+        with open(os.path.join(out, "status.html.tmp"), "w", encoding="utf-8") as f:
+            f.write(page)
+        os.replace(os.path.join(out, "status.html.tmp"), os.path.join(out, "status.html"))
+    except OSError as e:
+        print(f"watch: cannot write status.html: {e}", file=sys.stderr, flush=True)
 
 
 def main():

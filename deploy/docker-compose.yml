@@ -5,7 +5,8 @@
 #
 # The builder reads the telescopes share read-only (Finished/, Source Data/, NINA/, Gallery/)
 # and writes ./site; nginx serves ./site.
-# GALLERY_ROOT comes from ./.env (deploy.sh writes it).
+# GALLERY_ROOT and GALLERY_VERSION (the deployed commit, shown on status.html) come from ./.env
+# (deploy.sh writes it).
 services:
   astrogallery:
     image: nginx:alpine
@@ -21,6 +22,9 @@ services:
     build: ./app
     container_name: astrogallery-builder
     restart: unless-stopped
+    environment:
+      GALLERY_VERSION: ${GALLERY_VERSION:-}
     volumes:
       - ${GALLERY_ROOT:-/mnt/user/Telescopes}:/data:ro
       - ./site:/site
+      - /etc/localtime:/etc/localtime:ro  # build times in boris's time zone, not UTC

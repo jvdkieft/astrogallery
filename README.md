@@ -33,6 +33,7 @@ so a file still being copied is not picked up half-written.
 make deploy    # ship the code to boris and (re)start nginx + the builder there
 make site      # build site/ locally from the share at /Volumes/Telescopes (TELESCOPES=... to override)
 make preview   # build locally, then serve it at http://localhost:8000
+make test      # autopicks self-test (also run by GitHub Actions on every push)
 ```
 
 ```
@@ -89,12 +90,16 @@ are ignored by the automatic picks (picks.yaml can still use them).
 ## Output
 
 - `index.html`: cards grouped by kind (emission, reflection, SNR, planetary, galaxies, solar
-  system) with filter chips, thumbnail (HOO when there is one), hours against the goal, scopes,
+  system, star clusters) with filter chips, thumbnail (HOO when there is one), hours against the goal, scopes,
   nights and date range, filters.
 - `<id>.html`: large image with a HOO / Natural toggle (HOO first), detail inset with its own
   toggle, other versions, and the session table.
 - `img/<id>-<role>-600.jpg` and `-2560.jpg`: progressive sRGB JPEGs. `full/<id>-<role>.jpg`: a byte
   copy of the Finished JPG, offered as a download under its original name.
+- `status.html`: the last build's time, deployed commit, warnings, the `Finished/` JPGs whose names
+  could not be read, and each target's main image and hours. Linked from every footer; a failed
+  build replaces it with the end of its log. A JPG that cannot be read is left out with a warning
+  (the previous image stays if there was one) instead of failing the build.
 - `.manifest.json`: source mtime and size per image; only changed sources are re-rendered.
   Bump `GEN_VERSION` in gallery.py to force a full rebuild.
 

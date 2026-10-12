@@ -8,7 +8,7 @@ APPDATA  ?= /mnt/user/appdata/astrogallery
 # the same share on boris: Finished/, Source Data/, NINA/, Gallery/picks.yaml
 GALLERY_ROOT ?= /mnt/user/Telescopes
 
-.PHONY: all site preview deploy archive archive-check clean
+.PHONY: all site preview deploy archive archive-check test clean
 
 all: deploy
 
@@ -28,6 +28,11 @@ archive:
 
 archive-check:
 	BORIS="$(BORIS)" GALLERY_ROOT="$(GALLERY_ROOT)" python3 archive.py --dry-run
+
+# the autopicks rules against real file names, and that every module compiles
+test:
+	python3 autopicks.py --selftest
+	python3 -m py_compile gallery.py autopicks.py inventory.py minyaml.py watch.py archive.py
 
 clean:
 	rm -rf site
