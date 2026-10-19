@@ -4,6 +4,8 @@ Static gallery of Joe's finished astrophotos. A builder container on boris watch
 share (`\\boris\Telescopes`, `/mnt/user/Telescopes` on boris) and rebuilds the site whenever
 something in it changes. Nothing comes from scopessd any more.
 
+**To add images or change the site, start with [UPDATING.md](UPDATING.md).** This file is the reference.
+
 ```
 Telescopes/Finished/*.jpg + Source Data/ + NINA/ (+ Gallery/picks.yaml)  --watch.py + gallery.py (boris)-->  site/  --nginx:alpine-->  :8088
 ```
