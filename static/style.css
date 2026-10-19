@@ -68,7 +68,8 @@ h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; color: var(--muted); letter-spac
 /* target page */
 .target-header { padding-top: 1rem; }
 .crumbs { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; font-size: .9rem; margin-bottom: 1rem; }
-.crumbs .pn { display: flex; gap: 1rem; }
+.crumbs .pn { display: flex; gap: 1rem; min-width: 0; }
+.crumbs .pn a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 22ch; }
 .target-header .kind { margin: 0 0 1rem; }
 .viewer { position: relative; }
 .toggle { display: flex; gap: .4rem; margin: 0 0 .6rem; }
@@ -99,9 +100,19 @@ table.sessions { border-collapse: collapse; width: 100%; font-size: .9rem; font-
   .card .meta { display: none; }
   .depth .bar { flex-basis: 50px; }
   .sessions .short { display: inline; }
+  .sessions.one-filter .flt { display: none; }  /* the one filter is listed above the table */
+  .sessions .yr { display: none; }  /* only when all nights share a year; the range above has it */
   .sessions .long { display: none; }
   .sessions { font-size: .8rem; }
   .sessions th, .sessions td { padding: .35rem .35rem; }
   .depth { flex-wrap: wrap; gap: .2rem .5rem; font-size: .75rem; }
 }
 @media (max-width: 380px) { .grid, .alts { grid-template-columns: minmax(0, 1fr); } }
+
+/* build status page */
+.status ul { margin: 0; padding-left: 1.2rem; }
+.status li { margin: .2rem 0; overflow-wrap: anywhere; }
+.status .warn li { color: #f2c66d; }
+.status .ok { color: var(--done); }
+.status .file { color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
+.status .log { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; color: var(--muted); }

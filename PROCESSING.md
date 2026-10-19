@@ -12,7 +12,7 @@ hours from the capture data.
 | 1 | Copy the finished JPG, named per the convention | `Finished/` |
 | 2 | Make sure the capture data is there | `Source Data/` and `NINA/` (hours are counted from them) |
 | 3 | Only if the automatic choice is wrong: add an override | `Gallery/picks.yaml` |
-| 4 | Check the build | `ssh root@192.168.1.3 docker logs --tail 30 astrogallery-builder` |
+| 4 | Check the build | http://192.168.1.3:8088/status.html (or the builder log) |
 
 The live gallery is http://192.168.1.3:8088 (nginx container `astrogallery` on boris).
 
@@ -132,7 +132,7 @@ Rules:
   `[`, `"` or `'`.
 - Group by `kind`, first match wins: `galaxy` -> Galaxies, `emission` -> Emission nebulae,
   `reflection` -> Reflection nebulae, `supernova` -> Supernova remnants, `planetary` -> Planetary
-  nebulae, `solar system`/`moon`/`sun`/`planet` -> Solar system, else Other.
+  nebulae, `cluster` -> Star clusters, `solar system`/`moon`/`sun`/`planet` -> Solar system, else Other.
 
 `python3 autopicks.py --root <share> --slim` prints the current picks.yaml with every field the
 automatic picks already produce left out: the same site, but new versions are picked up by
@@ -145,7 +145,10 @@ anchors, no multi-line strings).
 ## 4. Check the build
 
 There is nothing to run: the builder on boris notices the change and rebuilds within a couple of
-minutes. Check what it said:
+minutes. Open http://192.168.1.3:8088/status.html (linked from every page's footer): it shows when
+the last build ran, its warnings, the JPGs in `Finished/` whose names it could not read (so they
+are not published), and each target's main image, hours and nights. If a build failed, the page
+says so with the end of its log. The same is in the builder log, with SSH to boris:
 
 ```
 ssh root@192.168.1.3 docker logs --tail 30 astrogallery-builder
@@ -156,9 +159,9 @@ ssh root@192.168.1.3 docker logs --tail 30 astrogallery-builder
 `warning: <id>: session key ... not in the capture sessions` means a `sessions` key doesn't match,
 or that night's data is not on the share yet. Spot-check the hours it prints. A line
 `watch: build FAILED` means the site was left as it was; fix the input and the next change
-triggers another build.
-
-Without SSH to boris, just open the target page on http://192.168.1.3:8088 and check it.
+triggers another build. A JPG that cannot be read (cut-off copy, 0 bytes) does not fail the build:
+it is left out with a warning, and if it replaced an image that was already on the site, the old
+one stays until the new file is fixed.
 
 To try a change before it goes live, build locally from the share (read only):
 `python3 gallery.py --root <share> [--picks <draft picks.yaml>] --out /tmp/site`, then open
@@ -170,5 +173,5 @@ Code changes to the generator still need `make deploy` from Joe's Mac, with Joe'
 
 - [ ] JPG in the share's `Finished/`, named per the convention, HOO + natural for emission targets
 - [ ] capture data for every night on the share (`Source Data/`, `NINA/`)
-- [ ] builder log shows no warnings and the right hours, and the page looks right on http://192.168.1.3:8088
+- [ ] status.html shows no warnings or unreadable names and the right hours, and the page looks right on http://192.168.1.3:8088
 - [ ] only if something is wrong: a small override in picks.yaml
