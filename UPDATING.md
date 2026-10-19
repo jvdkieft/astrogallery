@@ -1,6 +1,6 @@
 # Updating the gallery
 
-The live site is http://192.168.1.3:8088 (`astro.home.vandekieft.net` on the LAN). Boris rebuilds
+The live site is https://astro.home.vandekieft.net (LAN only; http://192.168.1.3:8088 also works). Boris rebuilds
 it by itself from the telescopes share: it checks every 60 seconds and rebuilds once the share has
 stopped changing. You never build or upload the site yourself. Updating the gallery means putting
 the right files on the share.
@@ -25,7 +25,7 @@ the right files on the share.
    - From the PC (scopessd is `E:\`): copy the new JPG from `E:\Finished` to `Y:\Finished`, and the
      night's capture folders from `E:\Source Data` and `E:\NINA` to the same places under `Y:\`.
      Run `make archive-check` on the Mac later to catch anything you missed.
-3. **Wait a couple of minutes**, then open http://192.168.1.3:8088/status.html (the "build
+3. **Wait a couple of minutes**, then open https://astro.home.vandekieft.net/status.html (the "build
    status" link in every page's footer). Check that the build time is recent, there are no
    warnings, nothing is listed under "Not published", and the target shows the new image and hours.
 4. Open the target's page and look at it.
@@ -117,7 +117,7 @@ On the Mac:
 cd ~/GitHub/astrogallery
 git switch -c my-change
 # edit gallery.py, autopicks.py, static/style.css, ...
-make test        # autopicks self-test and a compile check (from PR #5; until then: python3 autopicks.py --selftest)
+make test        # autopicks self-test and a compile check (GitHub Actions runs it too)
 make preview     # build from the share and serve it at http://localhost:8000
 ```
 
