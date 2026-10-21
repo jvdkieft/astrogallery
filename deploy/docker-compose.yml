@@ -5,7 +5,8 @@
 # container also joins the shared `proxynet` bridge and NPM forwards
 # astro.home.vandekieft.net -> astrogallery:80 by container name. Port 8088 stays open for direct use.
 #
-# The builder reads the telescopes share read-only (Finished/, Source Data/, NINA/, Gallery/)
+# The builder reads the telescopes share read-only (Finished/, Seestar S30 Pro/, Dwarf 3/,
+# NINA/, Gallery/)
 # and writes ./site; nginx serves ./site.
 # GALLERY_ROOT and GALLERY_VERSION (the deployed commit, shown on status.html) come from ./.env
 # (deploy.sh writes it).

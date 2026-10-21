@@ -5,10 +5,10 @@
                        [--inventory FILE | --no-inventory] [--source DIR] [--nina DIR]
                        [--out site] [--jobs N]
 
---root is the telescopes share: Finished/, Gallery/picks.yaml, Source Data/ and NINA/. Targets
-and their images come from the Finished/ file names (autopicks.py); picks.yaml, if present,
-overrides them field by field. Hours and sessions come from scanning Source Data/ and NINA/
-(inventory.py), unless Gallery/inventory.json exists or --inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
+--root is the telescopes share: Finished/, Gallery/picks.yaml, Seestar S30 Pro/, Dwarf 3/ and
+NINA/. Targets and their images come from the Finished/ file names (autopicks.py); picks.yaml,
+if present, overrides them field by field. Hours and sessions come from scanning
+Seestar S30 Pro/, Dwarf 3/ and NINA/ (inventory.py), unless Gallery/inventory.json exists or --inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
 builder container on boris uses those. Without sessions the site has no hours.
 
 Reads only; nothing under --root is ever written. Web derivatives (600 px thumb, 2560 px
@@ -213,7 +213,7 @@ def input_paths(root=None, finished=None, picks=None, inventory=None, source=Non
     if root:
         finished = finished or os.path.join(root, "Finished")
         picks = picks or os.path.join(root, "Gallery", "picks.yaml")
-        source = source or os.path.join(root, "Source Data")
+        source = source or root
         nina = nina or os.path.join(root, "NINA")
         reject = reject or inventory_scan.find_reject(root, nina)
         inv = os.path.join(root, "Gallery", "inventory.json")
@@ -226,17 +226,19 @@ def input_paths(root=None, finished=None, picks=None, inventory=None, source=Non
 
 
 def load_inventory(paths):
-    """Session list from paths["inventory"] if set, else from scanning Source Data and NINA;
+    """Session list from paths["inventory"] if set, else from scanning the Seestar, Dwarf and NINA
+    folders;
     None when neither has any."""
     inv_path, source, nina = paths["inventory"], paths["source"], paths["nina"]
     if inv_path:
         with open(inv_path) as f:
             sessions = json.load(f)
         if not sessions:
-            sys.exit(f"{inv_path} has no sessions; delete it to scan Source Data instead")
+            sys.exit(f"{inv_path} has no sessions; delete it to scan the capture folders instead")
         print(f"sessions: {len(sessions)} from {inv_path}", file=sys.stderr)
         return sessions
-    have = [p for p in (source, nina) if p and os.path.isdir(p)]
+    have = [p for p, ok in ((source, inventory_scan.has_captures(source)),
+                            (nina, nina and os.path.isdir(nina))) if ok]
     if have:
         sessions = inventory_scan.scan(source, nina, paths["reject"])
         if sessions:
@@ -246,7 +248,7 @@ def load_inventory(paths):
             return sessions
         warn(f"no capture sessions found in {' or '.join(have)}; building without session data")
     else:  # images still publish; hours, nights and session tables are left out
-        warn(f"no inventory.json and no Source Data or NINA folder ({source}); building without session data")
+        warn(f"no inventory.json and no Seestar S30 Pro, Dwarf 3 or NINA folder in {source}; building without session data")
     return None
 
 
@@ -621,10 +623,10 @@ def main():
     ap.add_argument("--finished", help="folder of finished JPGs (default $GALLERY_FINISHED or <root>/Finished)")
     ap.add_argument("--picks", help="default $GALLERY_PICKS or <root>/Gallery/picks.yaml")
     ap.add_argument("--inventory", help="sessions file; default $GALLERY_INVENTORY or "
-                    "<root>/Gallery/inventory.json if it exists, else Source Data and NINA are scanned")
+                    "<root>/Gallery/inventory.json if it exists, else the capture folders are scanned")
     ap.add_argument("--no-inventory", action="store_true",
                     help="scan even if inventory.json exists (same as GALLERY_INVENTORY=none)")
-    ap.add_argument("--source", help="Source Data folder to scan (default $GALLERY_SOURCE or <root>/Source Data)")
+    ap.add_argument("--source", help="folder holding Seestar S30 Pro/ and Dwarf 3/ to scan (default $GALLERY_SOURCE or <root>)")
     ap.add_argument("--nina", help="NINA folder to scan (default $GALLERY_NINA or <root>/NINA); subs listed in "
                     "<root>/SirilWork/PI/nina_reject.json or <root>/NINA/nina_reject.json "
                     "($GALLERY_NINA_REJECT) are left out")

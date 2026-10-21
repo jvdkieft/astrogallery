@@ -5,7 +5,7 @@
 
 Polls the files gallery.py reads (GALLERY_ROOT and the other GALLERY_* variables, see
 gallery.py --help): picks.yaml, the JPGs in Finished/, the stacks and shotsInfo.json files
-in Source Data/ and the subs in NINA/ (or inventory.json when that is used instead). Reruns gallery.py once they have
+in Seestar S30 Pro/ and Dwarf 3/ and the subs in NINA/ (or inventory.json when that is used instead). Reruns gallery.py once they have
 stopped changing for one poll, so a JPG that is still being copied over SMB is not picked up
 half-written. Polling rather than inotify because writes that arrive through Unraid's
 /mnt/user (shfs) or SMB do not reliably raise events.

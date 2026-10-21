@@ -5,7 +5,7 @@ PORT     ?= 8000
 # boris (Unraid). Override on the command line, e.g. make deploy BORIS=root@boris.local
 BORIS    ?= root@192.168.1.3
 APPDATA  ?= /mnt/user/appdata/astrogallery
-# the same share on boris: Finished/, Source Data/, NINA/, Gallery/picks.yaml
+# the same share on boris: Finished/, Seestar S30 Pro/, Dwarf 3/, NINA/, Gallery/picks.yaml
 GALLERY_ROOT ?= /mnt/user/Telescopes
 
 .PHONY: all site preview deploy archive archive-check test clean
@@ -22,7 +22,7 @@ preview: site
 deploy:
 	BORIS="$(BORIS)" APPDATA="$(APPDATA)" GALLERY_ROOT="$(GALLERY_ROOT)" ./deploy/deploy.sh
 
-# copy what the share is missing from the SSD (Source Data, NINA, Finished, nina_reject.json); never deletes
+# copy what the share is missing from the SSD (Seestar S30 Pro, Dwarf 3, NINA, Finished, nina_reject.json); never deletes
 archive:
 	BORIS="$(BORIS)" GALLERY_ROOT="$(GALLERY_ROOT)" python3 archive.py
 

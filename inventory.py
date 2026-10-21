@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Capture sessions (frames the scope STACKED x exposure) found under a Source Data folder
-and a NINA folder.
+"""Capture sessions (frames the scope STACKED x exposure) found on the telescopes share: the
+Seestar and Dwarf app folders at its root, and the NINA folder.
 
-    python3 inventory.py "<root>/Source Data" [out.json] [--nina "<root>/NINA"] [--reject FILE]
+    python3 inventory.py <root> [out.json] [--nina "<root>/NINA"] [--reject FILE]
 
 Port of SirilWork/PI/py/inventory.py with the folders as arguments instead of
 ~/mnt/scopessd, so the builder on boris can scan the telescopes share itself. gallery.py calls
 scan() directly; the command line prints one line per session (and writes out.json if given).
 
-    Source Data/Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
-    Source Data/Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
+    Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
+    Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
     NINA/<target>/<date>/LIGHT/NNNN.fits      Seestar run from NINA: raw subs, no on-scope stacking.
         Every sub counts except those listed in the reject file (a JSON list of paths relative to
         NINA/, e.g. "M45/2026-10-07/LIGHT/0064.fits"), grouped by FILTER and EXPTIME.
@@ -59,8 +59,17 @@ def fexp(v):
     return float(v)
 
 
+SEESTAR_DIR = "Seestar S30 Pro"
+DWARF_DIR = "Dwarf 3"
+
+
+def has_captures(src):
+    """True when src holds a Seestar or Dwarf app folder."""
+    return bool(src) and any(os.path.isdir(os.path.join(src, d)) for d in (SEESTAR_DIR, DWARF_DIR))
+
+
 def seestar_dirs(src):
-    for d in sorted(glob.glob(os.path.join(glob.escape(src), "Seestar S30 Pro", "*", ""))):
+    for d in sorted(glob.glob(os.path.join(glob.escape(src), SEESTAR_DIR, "*", ""))):
         tgt = os.path.basename(os.path.dirname(d))
         if tgt.endswith("_sub") or tgt.lower().startswith(("lunar", "solar")):
             continue
@@ -68,7 +77,7 @@ def seestar_dirs(src):
 
 
 def dwarf_dirs(src):
-    return sorted(glob.glob(os.path.join(glob.escape(src), "Dwarf 3", "Astronomy", "DWARF_RAW_*")))
+    return sorted(glob.glob(os.path.join(glob.escape(src), DWARF_DIR, "Astronomy", "DWARF_RAW_*")))
 
 
 # NINA folder name -> target as the Seestar app would name it
@@ -155,7 +164,8 @@ def find_reject(root, nina=None):
 
 
 def scan(src, nina=None, reject=None):
-    """Sessions in src (Source Data) and, when given, nina (the NINA folder)."""
+    """Sessions in src (the share root, which holds the Seestar and Dwarf folders) and, when
+    given, nina (the NINA folder)."""
     out = []
     if not (src and os.path.isdir(src)):
         src = None
@@ -213,13 +223,13 @@ def scan(src, nina=None, reject=None):
 def main():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("source", help="the Source Data folder")
+    ap.add_argument("source", help="the telescopes share (holds Seestar S30 Pro/ and Dwarf 3/)")
     ap.add_argument("out", nargs="?", help="also write the sessions to this JSON file")
-    ap.add_argument("--nina", help="the NINA folder (default: NINA next to the Source Data folder)")
-    ap.add_argument("--reject", help="NINA subs to leave out (default: SirilWork/PI/nina_reject.json "
-                    "or NINA/nina_reject.json next to the Source Data folder)")
+    ap.add_argument("--nina", help="the NINA folder (default: <root>/NINA)")
+    ap.add_argument("--reject", help="NINA subs to leave out (default: <root>/SirilWork/PI/nina_reject.json "
+                    "or <root>/NINA/nina_reject.json)")
     a = ap.parse_args()
-    root = os.path.dirname(os.path.abspath(a.source))
+    root = os.path.abspath(a.source)
     nina = a.nina or os.path.join(root, "NINA")
     reject = a.reject or find_reject(root, nina)
     out = scan(a.source, nina, reject)
