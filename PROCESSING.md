@@ -10,7 +10,7 @@ hours from the capture data.
 | Step | What | Where (on the share) |
 |---|---|---|
 | 1 | Copy the finished JPG, named per the convention | `Finished/` |
-| 2 | Make sure the capture data is there | `Source Data/` and `NINA/` (hours are counted from them) |
+| 2 | Make sure the capture data is there | `Seestar S30 Pro/`, `Dwarf 3/` and `NINA/` (hours are counted from them) |
 | 3 | Only if the automatic choice is wrong: add an override | `Gallery/picks.yaml` |
 | 4 | Check the build | http://192.168.1.3:8088/status.html (or the builder log) |
 
@@ -63,26 +63,29 @@ python3 autopicks.py --root /mnt/user/Telescopes          # or Y:\ on Windows, /
 python3 autopicks.py --selftest                           # the rules, checked against real file names
 ```
 
-## 2. Source Data and NINA (hours and sessions)
+## 2. Capture data: Seestar, Dwarf and NINA (hours and sessions)
 
 Hours, nights, scopes and filters on the site all come from the capture data on the share, never
 from file names. The builder scans it on every build with `inventory.py` (same rules as
-`SirilWork/PI/py/inventory.py`):
+`SirilWork/PI/py/inventory.py`). Since 21 Oct 2026 the app folders sit at the share root; there
+is no `Source Data/` folder any more.
 
-- Seestar app: `Source Data/Seestar S30 Pro/<target>/Stacked_*.fit` (largest stack per night).
+- Seestar app: `Seestar S30 Pro/<target>/Stacked_*.fit` (largest stack per night).
 - Seestar under NINA: `NINA/<target>/<date>/LIGHT/NNNN.fits`, every sub except those listed in
   `SirilWork/PI/nina_reject.json` (or `NINA/nina_reject.json`), grouped by FILTER and EXPTIME.
-- Dwarf 3: `Source Data/Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json` (`shotsStacked`).
+- Dwarf 3: `Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json` (`shotsStacked`). `DWARF_RAW_*` folders
+  and stacks in the `Dwarf 3/` root itself are not counted.
 
 New data only has to be copied to the share; there is nothing to rerun. Joe processes on scopessd
 and archives to the share afterwards; `make archive` on the Mac (`make archive-check` first to see
-what it would copy) copies `Source Data/`, `NINA/`, `Finished/` and `SirilWork/PI/nina_reject.json`
-across. It only adds files and replaces copies on the share that are empty or older, and never
+what it would copy) copies `Seestar S30 Pro/`, `Dwarf 3/`, `NINA/`, `Finished/` and
+`SirilWork/PI/nina_reject.json` across (the SSD has to use the same layout as the share; one that
+still has a `Source Data/` folder is refused). It only adds files and replaces copies on the share that are empty or older, and never
 deletes. To see what the scan finds
 (one line per session):
 
 ```
-python3 inventory.py "/mnt/user/Telescopes/Source Data"      # NINA/ and the reject list next to it are found too
+python3 inventory.py /mnt/user/Telescopes      # NINA/ and the reject list under it are found too
 ```
 
 The second and third columns (`scope`, `target`) are the `sessions` keys picks.yaml uses, e.g.
@@ -172,6 +175,6 @@ Code changes to the generator still need `make deploy` from Joe's Mac, with Joe'
 ## Checklist
 
 - [ ] JPG in the share's `Finished/`, named per the convention, HOO + natural for emission targets
-- [ ] capture data for every night on the share (`Source Data/`, `NINA/`)
+- [ ] capture data for every night on the share (`Seestar S30 Pro/`, `Dwarf 3/`, `NINA/`)
 - [ ] status.html shows no warnings or unreadable names and the right hours, and the page looks right on http://192.168.1.3:8088
 - [ ] only if something is wrong: a small override in picks.yaml
