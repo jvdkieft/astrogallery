@@ -10,7 +10,8 @@ scan() directly; the command line prints one line per session (and writes out.js
 
     Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
     Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
-    NINA/<target>/<date>/LIGHT/NNNN.fits      Seestar run from NINA: raw subs, no on-scope stacking.
+    NINA/<target>/<date>/LIGHT/NNNN.fits      Seestar run from NINA: raw subs, no on-scope stacking
+    NINA/<date>/<target>/LIGHT/NNNN.fits      (date first since 16 Oct 2026).
         Every sub counts except those listed in the reject file (a JSON list of paths relative to
         NINA/, e.g. "M45/2026-10-07/LIGHT/0064.fits"), grouped by FILTER and EXPTIME.
 """
@@ -32,7 +33,7 @@ CAT = {"M 52": (23.413, 61.59), "NGC 7635": (23.347, 61.20), "IC 443": (6.28, 22
        "IC 1848": (2.86, 60.4), "M 33": (1.565, 30.66), "M 31": (0.712, 41.27),
        "NGC 891": (2.377, 42.35), "M 1": (5.575, 22.01), "M 45": (3.79, 24.1),
        "NGC 7331": (22.62, 34.42), "NGC 7023": (21.03, 68.17), "NGC 281": (0.88, 56.62),
-       "NGC 6960": (20.76, 30.7), "M 27": (19.99, 22.72)}
+       "NGC 6960": (20.76, 30.7), "M 27": (19.99, 22.72), "M 81": (9.926, 69.07)}
 
 
 def evening(t):
@@ -80,8 +81,13 @@ def dwarf_dirs(src):
     return sorted(glob.glob(os.path.join(glob.escape(src), DWARF_DIR, "Astronomy", "DWARF_RAW_*")))
 
 
-# NINA folder name -> target as the Seestar app would name it
-NINA_NAMES = {"Double Cluster": "NGC 869", "M45": "M 45"}
+# NINA folder name -> target as the Seestar app would name it; mosaic panels count toward the app mosaics
+NINA_NAMES = {"Double Cluster": "NGC 869", "M45": "M 45", "M 45": "M 45",
+              "Veil P1": "mosaic_NGC 6960", "Veil P2": "mosaic_NGC 6960", "Veil complex": "mosaic_NGC 6960",
+              "Veil Complex": "mosaic_NGC 6960", "Heart IC1805": "mosaic_IC 1805", "Soul IC1848": "mosaic_IC 1805",
+              "California NGC1499": "mosaic_NGC 1499", "NGC1893 Field": "mosaic_NGC 1893",
+              "NGC1893 Mosaic": "mosaic_NGC 1893", "Sh2-10B Sadr": "SH2-108 - Sadr Region",
+              "Sh2-108 Sadr": "SH2-108 - Sadr Region"}
 NINA_FILTERS = {"IR": "IRCUT", "LP": "LP", "": "none"}
 
 
@@ -132,7 +138,10 @@ def scan_nina(nina, reject=None):
     out = []
     rej = load_reject(reject) if reject else set()
     for light, subs in nina_subs(nina).items():
-        tdir, day = os.path.relpath(light, nina).split(os.sep)[:2]
+        rel = os.path.relpath(os.path.dirname(light), nina).replace(os.sep, "/")
+        tdir, day = rel.split("/")[:2]
+        if re.match(r"\d{4}-\d{2}-\d{2}$", tdir):
+            tdir, day = day, tdir   # NINA layout since 16 Oct 2026: NINA/<date>/<target>/LIGHT
         grp = {}
         for f in subs:
             if os.path.relpath(f, nina).replace(os.sep, "/") in rej:
@@ -149,7 +158,7 @@ def scan_nina(nina, reject=None):
             g = grp.setdefault((flt, exp), [0, ts])
             g[0] += 1
         for (flt, exp), (n, ts) in grp.items():
-            out.append(dict(scope="S30P", folder=f"NINA/{tdir}/{day}", target=NINA_NAMES.get(tdir, tdir),
+            out.append(dict(scope="S30P", folder=f"NINA/{rel}", target=NINA_NAMES.get(tdir, tdir),
                             night=evening(ts), filter=flt, exp=exp, frames=n, nina=True))
     return out
 
