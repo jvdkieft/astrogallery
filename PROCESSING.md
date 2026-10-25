@@ -12,9 +12,9 @@ hours from the capture data.
 | 1 | Copy the finished JPG, named per the convention | `Finished/` |
 | 2 | Make sure the capture data is there | `Seestar S30 Pro/`, `Dwarf 3/` and `NINA/` (hours are counted from them) |
 | 3 | Only if the automatic choice is wrong: add an override | `Gallery/picks.yaml` |
-| 4 | Check the build | http://192.168.1.3:8088/status.html (or the builder log) |
+| 4 | Check the build | https://astro.home.vandekieft.net/status.html (or the builder log) |
 
-The live gallery is http://192.168.1.3:8088 (nginx container `astrogallery` on boris).
+The live gallery is https://astro.home.vandekieft.net (nginx container `astrogallery` on boris).
 
 ## 1. Finished/
 
@@ -148,7 +148,7 @@ anchors, no multi-line strings).
 ## 4. Check the build
 
 There is nothing to run: the builder on boris notices the change and rebuilds within a couple of
-minutes. Open http://192.168.1.3:8088/status.html (linked from every page's footer): it shows when
+minutes. Open https://astro.home.vandekieft.net/status.html (linked from every page's footer): it shows when
 the last build ran, its warnings, the JPGs in `Finished/` whose names it could not read (so they
 are not published), and each target's main image, hours and nights. If a build failed, the page
 says so with the end of its log. The same is in the builder log, with SSH to boris:
@@ -176,5 +176,5 @@ Code changes to the generator still need `make deploy` from Joe's Mac, with Joe'
 
 - [ ] JPG in the share's `Finished/`, named per the convention, HOO + natural for emission targets
 - [ ] capture data for every night on the share (`Seestar S30 Pro/`, `Dwarf 3/`, `NINA/`)
-- [ ] status.html shows no warnings or unreadable names and the right hours, and the page looks right on http://192.168.1.3:8088
+- [ ] status.html shows no warnings or unreadable names and the right hours, and the page looks right on https://astro.home.vandekieft.net
 - [ ] only if something is wrong: a small override in picks.yaml

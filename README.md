@@ -117,9 +117,10 @@ That starts two containers:
 
 - `astrogallery-builder`: built from `app/`, mounts the telescopes share read-only at `/data` and
   writes `site/`. `ssh root@192.168.1.3 docker logs -f astrogallery-builder` shows each build.
-- `astrogallery`: `nginx:alpine` serving `site/` read-only on port 8088. It also joins the
-  `proxynet` bridge, and Nginx Proxy Manager forwards `https://astro.home.vandekieft.net` ->
-  `astrogallery:80` (LAN only; NPM sits on br0 and can't reach `192.168.1.3:8088` itself).
+- `astrogallery`: `nginx:alpine` serving `site/` read-only. It has its own LAN address on br0,
+  192.168.1.7, and Nginx Proxy Manager forwards `https://astro.home.vandekieft.net` ->
+  `192.168.1.7:80` (LAN only). NPM sits on br0 and can't reach the host IP, and since the container
+  is on br0, `192.168.1.3:8088` no longer answers other LAN machines either; use the domain or .7.
 
 Rerun `make deploy` only when the code changes. Override the target with
 `make deploy BORIS=user@host APPDATA=/path GALLERY_ROOT=/mnt/user/<share>`.
