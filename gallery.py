@@ -540,7 +540,7 @@ def page(title, body, generated, css="style.css", extra_head=""):
 {extra_head}</head>
 <body>
 {body}
-<footer class="site-footer">Built {generated} · <a href="status.html">build status</a></footer>
+<footer class="site-footer">Built {generated} · <a href="about.html">How these are made</a> · <a href="status.html">build status</a></footer>
 </body>
 </html>
 """
@@ -601,6 +601,7 @@ def index_html(targets, images, generated, today):
     body = f"""<header class="site-header">
   <h1>Deep sky from a Bortle 8.6 backyard</h1>
   <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3 smart telescopes, narrowband filters against the suburban glow</p>
+  <p class="sub about-link"><a href="about.html">How these are made →</a></p>
   <nav class="filters" aria-label="Filter by kind">{"".join(chips)}</nav>
 </header>
 <main>
@@ -700,6 +701,84 @@ def target_html(t, prev, nxt, images, generated):
 
 def goal_of(t):
     return f" / {t['goal']:g}" if t["goal"] else ""
+
+
+def about_html(targets, generated):
+    """about.html: how the pictures are taken, processed and published. Numbers come from this build."""
+    sessions = [x for t in targets for x in t["sessions"]]
+    hours = sum(t["hours"] for t in targets)
+    nights = len({x["night"] for x in sessions})
+    frames = sum(int(x.get("frames") or 0) for x in sessions)
+    exps = sorted({float(x["exp"]) for x in sessions if x.get("exp")})
+    exp = (f"{exps[0]:g} to {exps[-1]:g} seconds" if len(exps) > 1 else f"{exps[0]:g} seconds") if exps else "a few seconds"
+    hoo = sum(1 for t in targets if t.get("hoo"))
+    stats = (f"So far: {len(targets)} targets, {hours:.0f} hours of exposure over {nights} nights, "
+             f"{frames:,} individual frames.") if sessions else ""
+    body = f"""<header class="target-header">
+  <nav class="crumbs"><a href="index.html">← Gallery</a></nav>
+  <h1>How these are made</h1>
+  <p class="kind">Two small smart telescopes, a very bright sky, and a lot of nights</p>
+</header>
+<main class="about">
+<p>Every picture here was taken from a suburban backyard under a Bortle 8.6 sky. The Bortle
+scale runs from 1 (truly dark) to 9 (inner city). At 8.6 the Milky Way is invisible and the
+sky never gets properly dark, so none of these objects can be seen by eye. {stats}</p>
+
+<h2>1. Capture</h2>
+<ul>
+<li><strong>The telescopes</strong> are a ZWO Seestar S30 Pro and a DwarfLab Dwarf 3. Both are
+small all-in-one smart telescopes, camera and mount included, set up on the back deck. The
+Seestar sits on an equatorial wedge, so it tracks the sky without the frame slowly rotating.</li>
+<li><strong>Thousands of short exposures.</strong> Instead of one long exposure, each scope takes
+frames of {exp} all night, and they are added together later. Short frames are forgiving: a
+passing plane, a gust of wind or a satellite only spoils a few of them.</li>
+<li><strong>Filters against the glow.</strong> Streetlights and the city glow cover the whole
+spectrum, while emission nebulae shine at a few specific colours: hydrogen-alpha (deep red) and
+oxygen-III (teal). A dual-band filter passes only those two and blocks most of the light
+pollution. That is what makes nebulae possible at all from here. Galaxies and star clusters shine
+in all colours, so a narrow filter would throw most of their light away: they are shot broadband
+and simply need more time.</li>
+<li><strong>Some nights the Seestar is run from a computer</strong> with N.I.N.A. instead of its
+phone app, taking raw 60-second frames. Every frame is kept, so poor ones (cloud, trailing) are
+thrown out before stacking, and each night is calibrated with its own dark and flat frames.</li>
+</ul>
+
+<h2>2. Many nights per object</h2>
+<p>One night is rarely enough under this sky. Most targets are shot over several nights, sometimes
+weeks apart, and all of it is stacked into one image. The hours on each card are the total
+exposure that went into it, counted straight from the capture files. The bar under them shows
+progress towards a depth goal for that kind of object: 1.5 hours for a bright cluster, 2 for a
+planetary nebula, 3 for a bright nebula, 4 for a galaxy, 5 or more for faint targets and mosaics.
+Past the goal, doubling the time buys only about 40% more signal, so it is time to move on. Very
+wide objects are shot as mosaics, several overlapping fields stitched into one.</p>
+
+<h2>3. Processing</h2>
+<ul>
+<li><strong>PixInsight</strong> does almost all of it (some older versions were done in Siril).
+It stacks the frames, calibrates the colour, the brightness gradient the city glow leaves across the frame
+is modelled and removed, and RC-Astro's BlurXTerminator, NoiseXTerminator and StarXTerminator
+sharpen the detail, clean up the noise and separate the stars from the nebula so each can be
+stretched on its own.</li>
+<li><strong>Stretching</strong> is the big step. The raw stack is almost black: the faint parts of
+a nebula are a tiny fraction of the brightest stars. A careful non-linear stretch brings them up
+without blowing out the stars.</li>
+<li><strong>Two renderings of the emission nebulae.</strong> <em>Natural</em> keeps the colours
+roughly as the filter recorded them. <em>HOO</em> maps hydrogen to red and oxygen to teal, so the
+two gases and the structure between them are easy to tell apart. {hoo} targets have both; the
+toggle above each image switches between them.</li>
+</ul>
+
+<h2>4. Publishing</h2>
+<p>A finished image is exported at full resolution and dropped into a folder on a home server. The
+site rebuilds itself within a couple of minutes: it reads the file name to work out the object,
+picks the best version (most nights, newest), counts the hours from the capture data and makes the
+web-sized copies. Nothing is uploaded by hand. The "Download full resolution" link gives the
+original export with its camera metadata removed.</p>
+<p>The site is plain HTML: no JavaScript, no cookies, no trackers, no ads. It is served from home
+through Cloudflare. Visits are counted from the server log by page and country only; no visitor
+addresses are kept. The site and its build pipeline were written with Claude Code.</p>
+</main>"""
+    return page("How these are made · bortle9.space", body, generated)
 
 
 def status_html(targets, images, unnamed, generated):
@@ -837,13 +916,14 @@ def main():
     generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html (LAN only)
     day = now.strftime("%Y-%m-%d")  # the public footer: a time zone would say where the builder is
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
-    keep = {"index.html", "status.html", "style.css", ".manifest.json", "img", "full"}
+    keep = {"index.html", "about.html", "status.html", "style.css", ".manifest.json", "img", "full"}
     write(os.path.join(a.out, "index.html"), index_html(ordered, images, day, now.date()))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
         nxt = ordered[n + 1] if n + 1 < len(ordered) else None
         write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, day))
         keep.add(f"{t['id']}.html")
+    write(os.path.join(a.out, "about.html"), about_html(ordered, day))
     write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated))
     css = os.path.join(a.out, "style.css")
     shutil.copyfile(os.path.join(HERE, "static", "style.css"), css + ".tmp")
