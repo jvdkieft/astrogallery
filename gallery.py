@@ -712,68 +712,75 @@ def about_html(targets, generated):
     exps = sorted({float(x["exp"]) for x in sessions if x.get("exp")})
     exp = (f"{exps[0]:g} to {exps[-1]:g} seconds" if len(exps) > 1 else f"{exps[0]:g} seconds") if exps else "a few seconds"
     hoo = sum(1 for t in targets if t.get("hoo"))
-    stats = (f"So far: {len(targets)} targets, {hours:.0f} hours of exposure over {nights} nights, "
-             f"{frames:,} individual frames.") if sessions else ""
+    stats = (f"Running total: {len(targets)} targets, {hours:.0f} hours of exposure, {nights} nights "
+             f"and {frames:,} individual frames.") if sessions else ""
     body = f"""<header class="target-header">
   <nav class="crumbs"><a href="index.html">← Gallery</a></nav>
   <h1>How these are made</h1>
-  <p class="kind">Two small smart telescopes, a very bright sky, and a lot of nights</p>
+  <p class="kind">Two little smart scopes, one very bright sky, and a lot of late nights</p>
 </header>
 <main class="about">
-<p>Every picture here was taken from a suburban backyard under a Bortle 8.6 sky. The Bortle
-scale runs from 1 (truly dark) to 9 (inner city). At 8.6 the Milky Way is invisible and the
-sky never gets properly dark, so none of these objects can be seen by eye. {stats}</p>
+<p>Everything here was shot from a back deck in the suburbs, under a Bortle 8.6 sky. The Bortle
+scale runs from 1 (middle of nowhere, the Milky Way bright enough to cast shadows) to 9 (downtown).
+At 8.6 the Milky Way is gone and, on a good night, the stars overhead can be counted by eye. The
+site name rounds up, because it feels like a 9. {stats}</p>
 
-<h2>1. Capture</h2>
+<p>Not one of these objects is visible from that yard. That's the fun part.</p>
+
+<h2>The gear</h2>
+<p>Two small all-in-one smart telescopes: a ZWO Seestar S30 Pro and a DwarfLab Dwarf 3. Camera,
+optics and mount in one box each, and both run on equatorial mounts, so they track the sky the way
+a proper mount does and the frame doesn't slowly rotate through the night. Polar-aligning on a
+wooden deck is a hobby of its own: the boards flex, and walking away from the scope at the wrong
+moment is enough to knock it off.</p>
+
+<h2>Shooting</h2>
 <ul>
-<li><strong>The telescopes</strong> are a ZWO Seestar S30 Pro and a DwarfLab Dwarf 3. Both are
-small all-in-one smart telescopes, camera and mount included, set up on the back deck. The
-Seestar sits on an equatorial wedge, so it tracks the sky without the frame slowly rotating.</li>
-<li><strong>Thousands of short exposures.</strong> Instead of one long exposure, each scope takes
-frames of {exp} all night, and they are added together later. Short frames are forgiving: a
-passing plane, a gust of wind or a satellite only spoils a few of them.</li>
-<li><strong>Filters against the glow.</strong> Streetlights and the city glow cover the whole
-spectrum, while emission nebulae shine at a few specific colours: hydrogen-alpha (deep red) and
-oxygen-III (teal). A dual-band filter passes only those two and blocks most of the light
-pollution. That is what makes nebulae possible at all from here. Galaxies and star clusters shine
-in all colours, so a narrow filter would throw most of their light away: they are shot broadband
-and simply need more time.</li>
-<li><strong>Some nights the Seestar is run from a computer</strong> with N.I.N.A. instead of its
-phone app, taking raw 60-second frames. Every frame is kept, so poor ones (cloud, trailing) are
-thrown out before stacking, and each night is calibrated with its own dark and flat frames.</li>
+<li><strong>Lots of short frames, not one long one.</strong> Each scope takes exposures of {exp}
+all night long, and they get stacked afterwards. A plane, a satellite or a gust of wind costs a
+few frames instead of the whole night.</li>
+<li><strong>Filters are what make this possible.</strong> Streetlights and city glow cover the whole
+spectrum, but emission nebulae glow at a couple of very specific colors: hydrogen-alpha (deep red)
+and oxygen-III (teal). A dual-band filter lets just those through and throws out most of the light
+pollution. Galaxies and star clusters shine in every color, so a narrow filter would throw their
+light out too. Those are shot broadband and simply need a lot more time.</li>
+<li><strong>Some nights the Seestar is driven from a computer</strong> with N.I.N.A. instead of
+its phone app, taking raw 60-second frames. Every frame is kept, the bad ones (clouds, trailing,
+the neighbor's floodlight) get tossed, and each night is calibrated properly with darks and
+flats.</li>
 </ul>
 
-<h2>2. Many nights per object</h2>
-<p>One night is rarely enough under this sky. Most targets are shot over several nights, sometimes
-weeks apart, and all of it is stacked into one image. The hours on each card are the total
-exposure that went into it, counted straight from the capture files. The bar under them shows
-progress towards a depth goal for that kind of object: 1.5 hours for a bright cluster, 2 for a
-planetary nebula, 3 for a bright nebula, 4 for a galaxy, 5 or more for faint targets and mosaics.
-Past the goal, doubling the time buys only about 40% more signal, so it is time to move on. Very
-wide objects are shot as mosaics, several overlapping fields stitched into one.</p>
+<h2>Many nights per target</h2>
+<p>One night is almost never enough under this sky. Most objects get several nights, sometimes
+weeks apart, all stacked into one image. The hours on each card are the real total that went in,
+counted straight from the capture files. The bar underneath is the goal for that kind of object:
+1.5 hours for a bright cluster, 2 for a planetary nebula, 3 for a bright nebula, 4 for a galaxy,
+5 or more for faint targets and mosaics. Past the goal, doubling the time buys only about 40% more
+signal, so that's where a target counts as done. The really big ones are mosaics: several
+overlapping fields stitched together.</p>
 
-<h2>3. Processing</h2>
+<h2>Processing</h2>
 <ul>
-<li><strong>PixInsight</strong> does almost all of it (some older versions were done in Siril).
-It stacks the frames, calibrates the colour, the brightness gradient the city glow leaves across the frame
-is modelled and removed, and RC-Astro's BlurXTerminator, NoiseXTerminator and StarXTerminator
-sharpen the detail, clean up the noise and separate the stars from the nebula so each can be
-stretched on its own.</li>
-<li><strong>Stretching</strong> is the big step. The raw stack is almost black: the faint parts of
-a nebula are a tiny fraction of the brightest stars. A careful non-linear stretch brings them up
-without blowing out the stars.</li>
-<li><strong>Two renderings of the emission nebulae.</strong> <em>Natural</em> keeps the colours
-roughly as the filter recorded them. <em>HOO</em> maps hydrogen to red and oxygen to teal, so the
-two gases and the structure between them are easy to tell apart. {hoo} targets have both; the
-toggle above each image switches between them.</li>
+<li><strong>PixInsight does nearly all of it.</strong> The early images were done in Siril (a few
+of those are still here), and PixInsight won the side-by-side comparison. Stacking, color
+calibration, pulling out the gradient the city glow smears across every frame, then RC-Astro's
+BlurXTerminator, NoiseXTerminator and StarXTerminator to sharpen, quiet the noise and lift the
+stars off so the nebula can be worked on by itself.</li>
+<li><strong>Stretching is where the picture shows up.</strong> A raw stack looks almost black:
+the faint stuff is a tiny fraction of the brightest stars. A careful stretch brings it up without
+turning every star into a blob.</li>
+<li><strong>HOO vs Natural.</strong> Emission nebulae get two versions. Natural keeps the colors
+roughly the way the filter caught them. HOO maps hydrogen to red and oxygen to teal, which shows
+where each gas sits and how they mix. HOO is the favorite, so it opens first. {hoo} targets have
+both; the toggle above the image switches.</li>
 </ul>
 
-<h2>4. Publishing</h2>
-<p>A finished image is exported at full resolution and dropped into a folder on a home server. The
-site rebuilds itself within a couple of minutes: it reads the file name to work out the object,
-picks the best version (most nights, newest), counts the hours from the capture data and makes the
-web-sized copies. Nothing is uploaded by hand. The "Full resolution" link under each image gives the
-original export with its camera metadata removed.</p>
+<h2>Getting it on here</h2>
+<p>A finished image gets exported at full resolution and dropped into a folder on a home server.
+A couple of minutes later it's on the site: the file name says what the object is, the build picks
+the best version (most nights, newest), adds up the hours from the capture data and makes the
+web-sized copies. Nothing is uploaded by hand. The "Full resolution" link under each image is the
+original export, with the camera metadata stripped.</p>
 </main>"""
     return page("How these are made · bortle9.space", body, generated)
 
