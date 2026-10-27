@@ -597,14 +597,14 @@ def index_html(targets, images, generated, today):
     sections.append(f'<section class="group" id="g-newest"><h2>Newest first</h2>\n<div class="grid">\n{newest}\n</div></section>')
     total = sum(t["hours"] for t in targets)
     body = f"""<header class="site-header">
-  <h1>Astro gallery</h1>
-  <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3, Bortle 8.6</p>
+  <h1>Deep sky from a Bortle 8.6 backyard</h1>
+  <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3 smart telescopes, narrowband filters against the suburban glow</p>
   <nav class="filters" aria-label="Filter by kind">{"".join(chips)}</nav>
 </header>
 <main>
 {chr(10).join(sections)}
 </main>"""
-    return page("Astro gallery", body, generated, extra_head=f"<style>{' '.join(rules)}</style>\n")
+    return page("Deep sky from a Bortle 8.6 backyard · bortle9.space", body, generated, extra_head=f"<style>{' '.join(rules)}</style>\n")
 
 
 def figure(slug, images, cls, caption, alt):
@@ -693,7 +693,7 @@ def target_html(t, prev, nxt, images, generated):
 <p class="note">Frames the scope stacked, not frames taken. Night = local evening the session started.</p>
 </section>""")
     parts.append("</main>")
-    return page(f"{t['name']} · Astro gallery", "\n".join(parts), generated)
+    return page(f"{t['name']} · bortle9.space", "\n".join(parts), generated)
 
 
 def goal_of(t):
