@@ -126,7 +126,7 @@ That starts two containers:
 
 If `tunnel.env` exists next to the compose file on boris, `deploy.sh` also starts the Cloudflare
 Tunnel connector from `deploy/docker-compose.tunnel.yml`; if `stats.env` exists, the traffic stats
-(Telegraf + Cloudflare exporter into InfluxDB on escher, Grafana dashboard in `deploy/grafana/`) from
+(Telegraf for the access log and `deploy/cfstats.py` for Cloudflare's hourly totals, into InfluxDB on escher, Grafana dashboard in `deploy/grafana/`) from
 `deploy/docker-compose.stats.yml`. Both in [deploy/PUBLISH.md](deploy/PUBLISH.md). nginx always writes
 a JSON access log (no visitor addresses) to `./logs`, one file a month.
 

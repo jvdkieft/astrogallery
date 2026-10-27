@@ -5,13 +5,19 @@
 #   INFLUX_URL=http://192.168.1.4:8086      InfluxDB 1.8 on escher; database "astrogallery"
 #   CF_API_TOKEN=...                        Cloudflare token, Zone / Analytics:Read on bortle9.space only
 #
-# astrogallery-stats (Telegraf) tails the JSON access log nginx writes to ./logs and scrapes the
-# Cloudflare exporter every 5 minutes; both go to InfluxDB, where the Grafana dashboard in
-# deploy/grafana/ reads them.
+# astrogallery-stats (Telegraf) tails the JSON access log nginx writes to ./logs;
+# astrogallery-cfstats (deploy/cfstats.py) writes Cloudflare's hourly zone totals every 15 minutes.
+# Both go to InfluxDB, where the Grafana dashboard in deploy/grafana/ reads them.
 services:
   astrogallery-stats:
     image: telegraf:1.40-alpine
     container_name: astrogallery-stats
+    # Run telegraf itself, not the image's entrypoint script: that one setcaps the binary and
+    # switches user with setpriv, which fails in a read-only, no-new-privileges container (exit 1,
+    # no log). uid 101 is nginx's, which owns ./logs, so the access log is readable.
+    entrypoint: ["telegraf"]
+    command: ["--config", "/etc/telegraf/telegraf.conf"]
+    user: "101:101"
     restart: unless-stopped
     env_file:
       - stats.env
@@ -23,22 +29,19 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
-    depends_on:
-      - astrogallery-cf-exporter
 
-  astrogallery-cf-exporter:
-    image: ghcr.io/lablabs/cloudflare_exporter:latest
-    container_name: astrogallery-cf-exporter
+  astrogallery-cfstats:
+    image: python:3.13-alpine
+    container_name: astrogallery-cfstats
     restart: unless-stopped
+    command: ["python3", "-u", "/cfstats.py"]
     env_file:
       - stats.env
     environment:
-      FREE_TIER: "true"
-      CF_ZONES: "3fcb25fe008a40cb7666bbad075e7909"  # bortle9.space
-      SCRAPE_INTERVAL: "60"  # telegraf.conf scrapes at the same cadence
-      SCRAPE_DELAY: "300"
-      LISTEN: ":8080"
-      LOG_LEVEL: "warn"
+      CF_ZONE_ID: "3fcb25fe008a40cb7666bbad075e7909"  # bortle9.space
+    volumes:
+      - ./cfstats.py:/cfstats.py:ro
+    user: "65534:65534"
     read_only: true
     security_opt:
       - no-new-privileges:true

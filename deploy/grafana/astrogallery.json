@@ -10,249 +10,1154 @@
     }
   ],
   "__requires": [
-    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.0.0" },
-    { "type": "datasource", "id": "influxdb", "name": "InfluxDB", "version": "1.0.0" },
-    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
-    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
-    { "type": "panel", "id": "table", "name": "Table", "version": "" },
-    { "type": "panel", "id": "text", "name": "Text", "version": "" }
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "11.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "influxdb",
+      "name": "InfluxDB",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "text",
+      "name": "Text",
+      "version": ""
+    }
   ],
   "title": "bortle9.space traffic",
   "uid": "bortle9-traffic",
   "description": "Visitors of the astro gallery: origin access log (pages, downloads, countries, referrers; LAN excluded) and Cloudflare edge totals (incl. cached images).",
-  "tags": ["astrogallery", "web"],
+  "tags": [
+    "astrogallery",
+    "web"
+  ],
   "timezone": "browser",
   "editable": true,
   "graphTooltip": 1,
-  "time": { "from": "now-30d", "to": "now" },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
   "refresh": "5m",
   "schemaVersion": 39,
   "version": 1,
-  "templating": { "list": [] },
-  "annotations": { "list": [] },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
   "panels": [
     {
-      "type": "row", "title": "Visitors (origin access log, home network excluded)", "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "panels": []
+      "type": "row",
+      "title": "Visitors (origin access log, home network excluded)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": []
     },
     {
-      "type": "stat", "title": "Page views", "id": 1,
-      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Gallery (index) views", "id": 2,
-      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'index' AND $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Full-res downloads", "id": 3,
-      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Bytes sent by boris", "id": 4,
-      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT sum(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "404s and other noise", "id": 5,
-      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" <> '200' AND \"status\" <> '304' AND \"status\" <> '206' AND $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Home-network hits", "id": 6,
-      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '1' AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "timeseries", "title": "Page views per hour", "id": 7,
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 5 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
+      "type": "stat",
+      "title": "Page views",
+      "id": 1,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
       "targets": [
-        { "refId": "A", "rawQuery": true, "resultFormat": "time_series", "alias": "target pages",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'page' AND $timeFilter GROUP BY time(1h) fill(0)" },
-        { "refId": "B", "rawQuery": true, "resultFormat": "time_series", "alias": "gallery index",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'index' AND $timeFilter GROUP BY time(1h) fill(0)" },
-        { "refId": "C", "rawQuery": true, "resultFormat": "time_series", "alias": "full-res downloads",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY time(1h) fill(0)" }
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter"
+        }
       ],
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal", "group": "A" }, "lineWidth": 0 } }, "overrides": [] }
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
     },
     {
-      "type": "table", "title": "Views by country", "id": 8,
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 5 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "table",
-        "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter GROUP BY \"country\"" } ],
-      "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } },
-        { "id": "sortBy", "options": { "sort": [ { "field": "views", "desc": true } ] } }
-      ],
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "fieldConfig": { "defaults": { "custom": { "align": "auto" } }, "overrides": [ { "matcher": { "id": "byName", "options": "views" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } } ] } ] }
-    },
-    {
-      "type": "table", "title": "Most viewed targets", "id": 9,
-      "gridPos": { "h": 10, "w": 8, "x": 0, "y": 13 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "table",
-        "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'page' AND $timeFilter GROUP BY \"page\"" } ],
-      "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } },
-        { "id": "sortBy", "options": { "sort": [ { "field": "views", "desc": true } ] } }
-      ],
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "views" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } } ] } ] }
-    },
-    {
-      "type": "table", "title": "Most downloaded full-res files", "id": 10,
-      "gridPos": { "h": 10, "w": 8, "x": 8, "y": 13 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "table",
-        "query": "SELECT count(\"bytes\") AS \"downloads\" FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY \"page\"" } ],
-      "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } },
-        { "id": "sortBy", "options": { "sort": [ { "field": "downloads", "desc": true } ] } }
-      ],
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "downloads" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } } ] } ] }
-    },
-    {
-      "type": "table", "title": "Where visitors came from (external referrers, newest first)", "id": 11,
-      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 13 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "table",
-        "query": "SELECT \"referer\", \"page\", \"country\" FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"referer\" <> '' AND \"referer\" !~ /bortle9\\.space/ AND $timeFilter ORDER BY time DESC LIMIT 200" } ],
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "Time" }, "properties": [ { "id": "custom.width", "value": 150 } ] } ] }
-    },
-    {
-      "type": "timeseries", "title": "Responses by status (origin, internet only)", "id": 12,
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 23 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series", "alias": "$tag_status",
-        "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND $timeFilter GROUP BY time(1h), \"status\" fill(0)" } ],
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal", "group": "A" }, "lineWidth": 0 } }, "overrides": [] }
-    },
-    {
-      "type": "table", "title": "User agents hitting the origin most", "id": 13,
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 23 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "table",
-        "query": "SELECT \"ua\", \"uri\", \"status\", \"country\" FROM \"access\" WHERE \"lan\" = '0' AND $timeFilter ORDER BY time DESC LIMIT 300" } ],
-      "transformations": [
-        { "id": "groupBy", "options": { "fields": { "ua": { "aggregations": [], "operation": "groupby" }, "uri": { "aggregations": ["count"], "operation": "aggregate" } } } },
-        { "id": "sortBy", "options": { "sort": [ { "field": "uri (count)", "desc": true } ] } }
-      ],
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "fieldConfig": { "defaults": {}, "overrides": [] }
-    },
-    {
-      "type": "row", "title": "Cloudflare edge (everything the internet asked for, cached images included)", "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "id": 200, "panels": []
-    },
-    {
-      "type": "stat", "title": "Requests at the edge", "id": 21,
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 31 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_total\" WHERE $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Served from Cloudflare's cache", "id": 22,
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 31 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_cached\" WHERE $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Bandwidth at the edge", "id": 23,
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 31 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_bandwidth_total\" WHERE $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "bytes", "decimals": 1, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "stat", "title": "Threats stopped by Cloudflare", "id": 24,
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 31 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series",
-        "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_threats_total\" WHERE $timeFilter" } ],
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "none", "graphMode": "none", "textMode": "value" },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "noValue": "0" }, "overrides": [] }
-    },
-    {
-      "type": "timeseries", "title": "Edge requests per hour", "id": 25,
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 35 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
+      "type": "stat",
+      "title": "Gallery (index) views",
+      "id": 2,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
       "targets": [
-        { "refId": "A", "rawQuery": true, "resultFormat": "time_series", "alias": "all requests",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_total\" WHERE $timeFilter GROUP BY time(1h) fill(0)" },
-        { "refId": "B", "rawQuery": true, "resultFormat": "time_series", "alias": "from cache",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_cached\" WHERE $timeFilter GROUP BY time(1h) fill(0)" }
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'index' AND $timeFilter"
+        }
       ],
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "line", "fillOpacity": 15, "lineWidth": 1 } }, "overrides": [] }
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
     },
     {
-      "type": "table", "title": "Edge requests by country", "id": 26,
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 35 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "table",
-        "query": "SELECT sum(\"counter\") AS \"requests\" FROM \"cloudflare_zone_requests_country\" WHERE $timeFilter GROUP BY \"country\"" } ],
+      "type": "stat",
+      "title": "Full-res downloads",
+      "id": 3,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Bytes sent by boris",
+      "id": 4,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT sum(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "404s and other noise",
+      "id": 5,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" <> '200' AND \"status\" <> '304' AND \"status\" <> '206' AND $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Home-network hits",
+      "id": 6,
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '1' AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Page views per hour",
+      "id": 7,
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "target pages",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'page' AND $timeFilter GROUP BY time(1h) fill(0)"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "gallery index",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'index' AND $timeFilter GROUP BY time(1h) fill(0)"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "full-res downloads",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY time(1h) fill(0)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Views by country",
+      "id": 8,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter GROUP BY \"country\""
+        }
+      ],
       "transformations": [
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } },
-        { "id": "sortBy", "options": { "sort": [ { "field": "requests", "desc": true } ] } }
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "views",
+                "desc": true
+              }
+            ]
+          }
+        }
       ],
-      "options": { "showHeader": true, "cellHeight": "sm" },
-      "fieldConfig": { "defaults": {}, "overrides": [ { "matcher": { "id": "byName", "options": "requests" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } } ] } ] }
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "views"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
     },
     {
-      "type": "timeseries", "title": "Edge responses by status", "id": 27,
-      "gridPos": { "h": 7, "w": 16, "x": 0, "y": 43 },
-      "datasource": { "type": "influxdb", "uid": "${DS_ASTRO}" },
-      "targets": [ { "refId": "A", "rawQuery": true, "resultFormat": "time_series", "alias": "$tag_status",
-        "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_status\" WHERE $timeFilter GROUP BY time(1h), \"status\" fill(0)" } ],
-      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal", "group": "A" }, "lineWidth": 0 } }, "overrides": [] }
+      "type": "table",
+      "title": "Most viewed targets",
+      "id": 9,
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'page' AND $timeFilter GROUP BY \"page\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "views",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "views"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
     },
     {
-      "type": "text", "title": "How to read this", "id": 28,
-      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 43 },
-      "options": { "mode": "markdown", "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; the country is the code Cloudflare attaches. `page` is only set when a page or full-res file was actually served (status 200), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are per-minute zone totals from Cloudflare's GraphQL API, five minutes behind. Compare them with Analytics → Traffic in the Cloudflare dashboard once; they should agree for a full day." }
+      "type": "table",
+      "title": "Most downloaded full-res files",
+      "id": 10,
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT count(\"bytes\") AS \"downloads\" FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY \"page\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "downloads",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "downloads"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Where visitors came from (external referrers, newest first)",
+      "id": 11,
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 16,
+        "y": 13
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT \"referer\", \"page\", \"country\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"referer\" <> '' AND \"referer\" !~ /bortle9\\.space/ AND $timeFilter ORDER BY time DESC LIMIT 200"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Responses by status (origin, internet only)",
+      "id": 12,
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "$tag_status",
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND $timeFilter GROUP BY time(1h), \"status\" fill(0)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "User agents hitting the origin most",
+      "id": 13,
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT \"ua\", \"uri\", \"status\", \"country\" FROM \"access\" WHERE \"lan\" = '0' AND $timeFilter ORDER BY time DESC LIMIT 300"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "ua": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "uri": {
+                "aggregations": [
+                  "count"
+                ],
+                "operation": "aggregate"
+              }
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "uri (count)",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Cloudflare edge (everything the internet asked for, cached images included)",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "id": 200,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Requests at the edge",
+      "id": 21,
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT sum(\"requests\") FROM \"cf_hourly\" WHERE $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Unique visitors (Cloudflare, per hour summed)",
+      "id": 22,
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT sum(\"uniques\") FROM \"cf_hourly\" WHERE $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Bandwidth at the edge",
+      "id": 23,
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT sum(\"bytes\") FROM \"cf_hourly\" WHERE $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Threats stopped by Cloudflare",
+      "id": 24,
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 31
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "query": "SELECT sum(\"threats\") FROM \"cf_hourly\" WHERE $timeFilter"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Edge requests per hour",
+      "id": 25,
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "all requests",
+          "query": "SELECT sum(\"requests\") FROM \"cf_hourly\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
+        },
+        {
+          "refId": "B",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "from cache",
+          "query": "SELECT sum(\"cached_requests\") FROM \"cf_hourly\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "unique visitors",
+          "query": "SELECT sum(\"uniques\") FROM \"cf_hourly\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "title": "Edge requests by country",
+      "id": 26,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 35
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT sum(\"requests\") AS \"requests\" FROM \"cf_country\" WHERE $timeFilter GROUP BY \"country\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "requests",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requests"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Edge responses by status",
+      "id": 27,
+      "gridPos": {
+        "h": 7,
+        "w": 16,
+        "x": 0,
+        "y": 43
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "$tag_status",
+          "query": "SELECT sum(\"requests\") FROM \"cf_status\" WHERE $timeFilter GROUP BY time(1h), \"status\" fill(0)"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "text",
+      "title": "How to read this",
+      "id": 28,
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 43
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; the country is the code Cloudflare attaches. `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
+      }
     }
   ]
 }
