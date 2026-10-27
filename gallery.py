@@ -720,7 +720,7 @@ def about_html(targets, generated):
   <p class="kind">Two little smart scopes, one very bright sky, and a lot of late nights</p>
 </header>
 <main class="about">
-<p>Everything here was shot from a back deck in the suburbs, under a Bortle 8.6 sky. The Bortle
+<p>Everything here was shot from a back deck in the Central Iowa suburbs, under a Bortle 8.6 sky. The Bortle
 scale runs from 1 (middle of nowhere, the Milky Way bright enough to cast shadows) to 9 (downtown).
 At 8.6 the Milky Way is gone and, on a good night, the stars overhead can be counted by eye. The
 site name rounds up, because it feels like a 9. {stats}</p>
