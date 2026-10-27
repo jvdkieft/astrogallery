@@ -775,12 +775,6 @@ where each gas sits and how they mix. HOO is the favorite, so it opens first. {h
 both; the toggle above the image switches.</li>
 </ul>
 
-<h2>Getting it on here</h2>
-<p>A finished image gets exported at full resolution and dropped into a folder on a home server.
-A couple of minutes later it's on the site: the file name says what the object is, the build picks
-the best version (most nights, newest), adds up the hours from the capture data and makes the
-web-sized copies. Nothing is uploaded by hand. The "Full resolution" link under each image is the
-original export, with the camera metadata stripped.</p>
 </main>"""
     return page("How these are made · bortle9.space", body, generated)
 
