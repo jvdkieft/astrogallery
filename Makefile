@@ -29,9 +29,11 @@ archive:
 archive-check:
 	BORIS="$(BORIS)" GALLERY_ROOT="$(GALLERY_ROOT)" python3 archive.py --dry-run
 
-# the autopicks rules against real file names, and that every module compiles
+# the autopicks rules against real file names, the metadata stripping of full/ copies, and that
+# every module compiles (GitHub Actions also runs nginx -t on deploy/nginx.conf)
 test:
 	python3 autopicks.py --selftest
+	python3 gallery.py --selftest
 	python3 -m py_compile gallery.py autopicks.py inventory.py minyaml.py watch.py archive.py
 
 clean:

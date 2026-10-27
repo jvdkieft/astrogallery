@@ -19,6 +19,15 @@ services:
     volumes:
       - ./site:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./logs:/var/log/astro  # JSON access log, one file a month (traffic stats)
+    # The only container that faces the internet: nothing in it is writable except what nginx
+    # needs at runtime, and nothing in it can gain privileges.
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
     networks:
       - default
       - proxynet
@@ -27,6 +36,8 @@ services:
     build: ./app
     container_name: astrogallery-builder
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       GALLERY_VERSION: ${GALLERY_VERSION:-}
     volumes:

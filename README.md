@@ -120,8 +120,45 @@ That starts two containers:
   `proxynet` bridge, and Nginx Proxy Manager forwards `https://astro.home.vandekieft.net` ->
   `astrogallery:80` (LAN only; NPM sits on br0 and can't reach `192.168.1.3:8088` itself).
 
+If `tunnel.env` exists next to the compose file on boris, `deploy.sh` also starts the Cloudflare
+Tunnel connector from `deploy/docker-compose.tunnel.yml`; if `stats.env` exists, the traffic stats
+(Telegraf + Cloudflare exporter into InfluxDB on escher, Grafana dashboard in `deploy/grafana/`) from
+`deploy/docker-compose.stats.yml`. Both in [deploy/PUBLISH.md](deploy/PUBLISH.md). nginx always writes
+a JSON access log (no visitor addresses) to `./logs`, one file a month.
+
 Rerun `make deploy` only when the code changes. Override the target with
 `make deploy BORIS=user@host APPDATA=/path GALLERY_ROOT=/mnt/user/<share>`.
+
+## Facing the internet
+
+[deploy/PUBLISH.md](deploy/PUBLISH.md) is the step-by-step for putting the site on a public
+name (Cloudflare Tunnel, or a port-forward to NPM), with the checks to run from outside.
+
+The site is static, has no JavaScript and is served read-only, so what is published is the
+only thing to protect. What this repo does for that:
+
+- `full/` copies are the Finished JPG with its metadata stripped (`strip_metadata` in gallery.py):
+  Exif, XMP, IPTC and comments go; picture data, ICC profile and orientation stay. A JPG exported
+  with a GPS tag or a camera serial in it does not publish them. The web derivatives never had any.
+- `deploy/nginx.conf`: no version string, `.manifest.json` and `*.tmp` are 404, `status.html`
+  (share paths in warnings, builder log after a failed build) is only served to addresses on the
+  home network, `full/` downloads are limited to two at a time per address at 2 MB/s after the first MB (and
+  robots.txt asks crawlers to skip them), and a
+  Content-Security-Policy allows nothing to run. The
+  client address is taken from `X-Forwarded-For` when the request came through a proxy on a
+  private network (NPM, a tunnel connector).
+- `deploy/docker-compose.yml`: the nginx container is read-only and cannot gain privileges.
+
+What is not in this repo and has to be right on the network side:
+
+- Expose only this site. Forwarding a port to Nginx Proxy Manager exposes every host NPM knows,
+  by name; the `*.home.vandekieft.net` certificate covers them all. Prefer a tunnel that
+  publishes one hostname (Cloudflare Tunnel, `cloudflared` on proxynet pointing at
+  `http://astrogallery:80`), or put an access list on every other NPM host and never forward NPM's
+  admin port (81) or the UDM's console.
+- Cloudflare's free certificate covers `vandekieft.net` and `*.vandekieft.net` only, so a proxied
+  or tunnelled `astro.home.vandekieft.net` fails TLS. The public name is `bortle9.space` (its own
+  zone, same Cloudflare account); `astro.home.` stays for the LAN.
 
 ## Rebuild loop
 
