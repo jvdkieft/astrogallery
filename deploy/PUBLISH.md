@@ -51,33 +51,36 @@ Under Public Hostname add:
 `astro.home.vandekieft.net`: NPM would answer every public request with
 `X-Served-By: astro.home.vandekieft.net`.
 
-### 2. Add the connector to the compose file on boris
+### 2. Start the connector on boris
 
-In `deploy/docker-compose.yml` (then `make deploy`), or by hand in
-`/mnt/user/appdata/astrogallery/docker-compose.yml`:
+The connector is already described in `deploy/docker-compose.tunnel.yml` (image
+`cloudflare/cloudflared`, container `astrogallery-tunnel`, on `proxynet`, read-only, no new
+privileges). `deploy.sh` starts it whenever a `tunnel.env` exists next to the compose file on
+boris, and leaves the tunnel alone when there is none. So, once, on boris:
 
-```yaml
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: astrogallery-tunnel
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - proxynet
+```
+ssh root@192.168.1.3
+printf 'TUNNEL_TOKEN=eyJ...
+' > /mnt/user/appdata/astrogallery/tunnel.env
+chmod 600 /mnt/user/appdata/astrogallery/tunnel.env
 ```
 
-Put the token in `.env` next to the compose file on boris (`TUNNEL_TOKEN=eyJ...`), never in
-the repo. `deploy.sh` rewrites `.env` on every deploy with `GALLERY_ROOT` and
-`GALLERY_VERSION`, so either add `TUNNEL_TOKEN` to what it writes (read from the Mac's
-environment, e.g. `TUNNEL_TOKEN=... make deploy`) or keep the token in a second file
-(`tunnel.env`) and give the service `env_file: tunnel.env`. The second is simpler.
+then `make deploy` from the Mac (it prints "tunnel.env found: starting the Cloudflare Tunnel
+connector too"). The token is never in the repo and `.env` is still rewritten by every
+deploy without touching it. The tunnel shows **Healthy** in the dashboard within a minute;
+one connector is enough for a static site. `ssh root@192.168.1.3 docker logs
+astrogallery-tunnel` shows the connector registering.
 
-`docker compose up -d` on boris; the tunnel shows **Healthy** in the dashboard within a
-minute. One connector is enough for a static site.
+**Already running a tunnel for something else (the Vikunja setup)?** Reuse it instead of
+making a second one; a tunnel can publish any number of hostnames. In that tunnel add the
+two public hostnames from step 1 and skip the connector here. The service URL depends on
+where that connector runs: `http://astrogallery:80` if it is a container on `proxynet` on
+boris, `http://192.168.1.3:8088` from anywhere else on the LAN. Both reach the same nginx, and
+nginx takes the visitor's address from the `X-Forwarded-For` that cloudflared sets (the
+connector's own LAN address is in the trusted range), so `status.html` stays LAN-only
+either way. If that tunnel lives in the vandekieft.net account, bortle7.com has to be a zone
+in the same account for the hostname to be offered, which gives up the separate-account
+split from "Before either route" step 3; a second tunnel in the bortle7.com account keeps it.
 
 ### 3. Cloudflare settings for the zone
 
@@ -117,8 +120,9 @@ On the LAN `https://astro.home.vandekieft.net/status.html` still answers 200 thr
 
 ### Rollback
 
-Delete the public hostname in the tunnel (or stop `astrogallery-tunnel`). The site is off
-the internet immediately; nothing else changes.
+Delete the public hostname in the tunnel (or `docker stop astrogallery-tunnel`). The site is off
+the internet immediately; nothing else changes. To drop the connector for good, delete
+`tunnel.env` on boris, `docker rm -f astrogallery-tunnel`, and delete the tunnel in the dashboard.
 
 ## Route B: port-forward to Nginx Proxy Manager (not recommended)
 

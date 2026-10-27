@@ -120,6 +120,9 @@ That starts two containers:
   `proxynet` bridge, and Nginx Proxy Manager forwards `https://astro.home.vandekieft.net` ->
   `astrogallery:80` (LAN only; NPM sits on br0 and can't reach `192.168.1.3:8088` itself).
 
+If `tunnel.env` exists next to the compose file on boris, `deploy.sh` also starts the Cloudflare
+Tunnel connector from `deploy/docker-compose.tunnel.yml` (see [deploy/PUBLISH.md](deploy/PUBLISH.md)).
+
 Rerun `make deploy` only when the code changes. Override the target with
 `make deploy BORIS=user@host APPDATA=/path GALLERY_ROOT=/mnt/user/<share>`.
 
