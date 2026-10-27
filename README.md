@@ -121,7 +121,10 @@ That starts two containers:
   `astrogallery:80` (LAN only; NPM sits on br0 and can't reach `192.168.1.3:8088` itself).
 
 If `tunnel.env` exists next to the compose file on boris, `deploy.sh` also starts the Cloudflare
-Tunnel connector from `deploy/docker-compose.tunnel.yml` (see [deploy/PUBLISH.md](deploy/PUBLISH.md)).
+Tunnel connector from `deploy/docker-compose.tunnel.yml`; if `stats.env` exists, the traffic stats
+(Telegraf + Cloudflare exporter into InfluxDB on escher, Grafana dashboard in `deploy/grafana/`) from
+`deploy/docker-compose.stats.yml`. Both in [deploy/PUBLISH.md](deploy/PUBLISH.md). nginx always writes
+a JSON access log (no visitor addresses) to `./logs`, one file a month.
 
 Rerun `make deploy` only when the code changes. Override the target with
 `make deploy BORIS=user@host APPDATA=/path GALLERY_ROOT=/mnt/user/<share>`.

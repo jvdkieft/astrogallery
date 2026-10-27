@@ -174,6 +174,69 @@ goes public. Only if the tunnel is unwanted:
 4. `X-Served-By` will say `bortle9.space` (NPM echoes the request's host), which is fine.
 5. Everything in Route A step 3 and the checks in step 4 apply unchanged.
 
+## Traffic stats
+
+Two sources, one InfluxDB database, one Grafana dashboard. Nothing runs in the visitor's
+browser (the CSP would not let it anyway) and no visitor address is stored.
+
+```
+nginx (boris) --JSON log, one file a month--> Telegraf (boris) --> InfluxDB "astrogallery" (escher) --> Grafana (escher:3000)
+Cloudflare GraphQL --cloudflare-exporter (boris)--> Telegraf ---^
+```
+
+- **Origin:** `deploy/nginx.conf` writes one JSON line per request to
+  `/mnt/user/appdata/astrogallery/logs/access-<year>-<month>.json` (a few MB a month; delete
+  old months by hand if ever needed). Per request: time, host, method, uri, status, `kind`
+  (index / page / img / full / css / robots / status / other), `page` (the page or `full/` file
+  when it was served with 200, else `-`), `country` (the two-letter code Cloudflare attaches;
+  `-` from the LAN), `lan` (1 when the request came through Nginx Proxy Manager), bytes,
+  request time, referer, user agent, Cloudflare ray id. **No IP address.**
+  A full-res download counts when the whole file went out with status 200; a download manager
+  fetching it in ranges (206) shows in the status chart but not in the download table.
+- **Edge:** the `cloudflare_exporter` container asks Cloudflare's GraphQL API, once a minute,
+  for one minute of zone totals (requests, cached requests, bytes, threats, by country and by
+  status), five minutes behind real time. Those include the image requests Cloudflare answered
+  from its cache, which never reach boris. Telegraf scrapes it at the same cadence, so the
+  points in InfluxDB are per-minute counts and sum to the totals.
+- **Telegraf** (`deploy/telegraf.conf`, container `astrogallery-stats`) tails the log and
+  scrapes the exporter, and writes both to the `astrogallery` database on escher's
+  InfluxDB 1.8 (`http://192.168.1.4:8086`, no authentication on the LAN). Measurement `access`
+  for the origin (tags host, method, status, kind, page, country, lan, source=origin), and
+  one measurement per exporter metric for the edge (`cloudflare_zone_requests_total`, ...,
+  field `counter`, tags zone, country, status, source=edge).
+
+### Setup (once)
+
+1. Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom: permission
+   **Zone / Analytics / Read**, zone resource **Include / Specific zone / bortle9.space**.
+   Nothing else. Copy the token.
+2. On boris, next to the compose file:
+
+   ```
+   printf 'INFLUX_URL=http://192.168.1.4:8086\nCF_API_TOKEN=<the token>\n' > /mnt/user/appdata/astrogallery/stats.env
+   chmod 600 /mnt/user/appdata/astrogallery/stats.env
+   ```
+
+3. `make deploy` from the Mac. It prints "stats.env found: starting the traffic stats", creates
+   `./logs` (owned by nginx's uid 101) and starts `astrogallery-stats` and
+   `astrogallery-cf-exporter`. The database is created by Telegraf if it does not exist.
+4. Grafana (`http://escher.home.vandekieft.net:3000`): Connections → Data sources → Add →
+   InfluxDB: query language InfluxQL, URL `http://192.168.1.4:8086`, database `astrogallery`,
+   HTTP method GET, no auth. Save & test. Then Dashboards → New → Import → upload
+   `deploy/grafana/astrogallery.json` and pick that data source.
+5. Checks: `ssh root@192.168.1.3 docker logs astrogallery-stats` shows no `E!` lines;
+   `ls -la /mnt/user/appdata/astrogallery/logs/` shows this month's file growing;
+   `curl -s 'http://192.168.1.4:8086/query?db=astrogallery&q=SELECT+count(bytes)+FROM+access'`
+   returns a number; the Cloudflare numbers in Grafana should match Analytics → Traffic in the
+   Cloudflare dashboard for the same day (verify once; if they do not, the exporter's minute
+   window and Telegraf's scrape have drifted apart).
+
+### Turning it off
+
+Delete `stats.env` on boris, `docker rm -f astrogallery-stats astrogallery-cf-exporter`, and
+`make deploy`. The log keeps being written (it is cheap and local); drop the `./logs` line from
+`deploy/docker-compose.yml` and the `access_log` line from `deploy/nginx.conf` to stop that too.
+
 ## What the site still reveals (accepted)
 
 Northern-hemisphere targets, a Bortle 8.6 sky (it is in the site name), the nights the scopes were out and
