@@ -1,6 +1,7 @@
 # Updating the gallery
 
-The live site is https://astro.home.vandekieft.net (LAN only; http://192.168.1.3:8088 also works). Boris rebuilds
+The site is https://bortle9.space on the internet and https://astro.home.vandekieft.net on the LAN
+(also http://192.168.1.7; `192.168.1.3:8088` only answers from boris itself). Boris rebuilds
 it by itself from the telescopes share: it checks every 60 seconds and rebuilds once the share has
 stopped changing. You never build or upload the site yourself. Updating the gallery means putting
 the right files on the share.
@@ -19,14 +20,14 @@ the right files on the share.
    - From the Mac, with scopessd plugged in:
      ```
      cd ~/GitHub/astrogallery
-     make archive-check   # what the share is missing (Source Data, NINA, Finished, nina_reject.json)
+     make archive-check   # what the share is missing (Seestar S30 Pro, Dwarf 3, NINA, Finished, nina_reject.json)
      make archive         # copy it; only adds or replaces empty/older copies, never deletes
      ```
    - From the PC (scopessd is `E:\`): copy the new JPG from `E:\Finished` to `Y:\Finished`, and the
-     night's capture folders from `E:\Source Data` and `E:\NINA` to the same places under `Y:\`.
+     night's capture folders from `E:\Seestar S30 Pro`, `E:\Dwarf 3` and `E:\NINA` to the same places under `Y:\`.
      Run `make archive-check` on the Mac later to catch anything you missed.
-3. **Wait a couple of minutes**, then open https://astro.home.vandekieft.net/status.html (the "build
-   status" link in every page's footer). Check that the build time is recent, there are no
+3. **Wait a couple of minutes**, then open https://astro.home.vandekieft.net/status.html on the LAN (the "build
+   status" link in every page's footer; blocked from the internet). Check that the build time is recent, there are no
    warnings, nothing is listed under "Not published", and the target shows the new image and hours.
 4. Open the target's page and look at it.
 
@@ -66,7 +67,7 @@ has the full rules.
 |---|---|---|
 | The new image isn't on the site | The build hasn't run yet, or the name couldn't be read | Check status.html: a recent build time, and whether the file is under "Not published". Rename it to the convention. |
 | A warning about an unreadable JPG | The copy was cut short or is 0 bytes | Copy the file again. The old image stays on the site until then. |
-| Hours are too low, or a session-key warning | That night's capture data isn't on the share yet | `make archive` from the Mac, or copy the `Source Data`/`NINA` folders. |
+| Hours are too low, or a session-key warning | That night's capture data isn't on the share yet | `make archive` from the Mac, or copy the `Seestar S30 Pro`/`Dwarf 3`/`NINA` folders. |
 | The wrong image is the main one | The automatic choice doesn't match what you want | Add an override in `Gallery/picks.yaml` (below). |
 | A new object lands under "Other" with a raw name | It isn't in the catalogue table in `autopicks.py` | Give it `name`, `kind` and `goal_h` in picks.yaml, or add it to the catalogue (a code change). |
 | status.html says the build failed | Shows the end of the build log | The site stays as it was. Fix the input; the next change triggers a new build. |
