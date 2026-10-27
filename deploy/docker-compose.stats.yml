@@ -12,6 +12,12 @@ services:
   astrogallery-stats:
     image: telegraf:1.40-alpine
     container_name: astrogallery-stats
+    # Run telegraf itself, not the image's entrypoint script: that one setcaps the binary and
+    # switches user with setpriv, which fails in a read-only, no-new-privileges container (exit 1,
+    # no log). uid 101 is nginx's, which owns ./logs, so the access log is readable.
+    entrypoint: ["telegraf"]
+    command: ["--config", "/etc/telegraf/telegraf.conf"]
+    user: "101:101"
     restart: unless-stopped
     env_file:
       - stats.env
