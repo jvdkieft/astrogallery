@@ -5,15 +5,17 @@
                        [--inventory FILE | --no-inventory] [--source DIR] [--nina DIR]
                        [--out site] [--jobs N]
 
---root is the telescopes share: Finished/, Gallery/picks.yaml, Source Data/ and NINA/. Targets
-and their images come from the Finished/ file names (autopicks.py); picks.yaml, if present,
-overrides them field by field. Hours and sessions come from scanning Source Data/ and NINA/
-(inventory.py), unless Gallery/inventory.json exists or --inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
+--root is the telescopes share: Finished/, Gallery/picks.yaml, Seestar S30 Pro/, Dwarf 3/ and
+NINA/. Targets and their images come from the Finished/ file names (autopicks.py); picks.yaml,
+if present, overrides them field by field. Hours and sessions come from scanning
+Seestar S30 Pro/, Dwarf 3/ and NINA/ (inventory.py), unless Gallery/inventory.json exists or --inventory is given. Every path also has a GALLERY_* environment variable (see --help); the
 builder container on boris uses those. Without sessions the site has no hours.
 
 Reads only; nothing under --root is ever written. Web derivatives (600 px thumb, 2560 px
-display, both progressive sRGB JPEG) and a byte copy of the full-res JPG go in site/img and
-site/full. They are rebuilt only when the source file's mtime or size changes
+display, both progressive sRGB JPEG) and a copy of the full-res JPG go in site/img and
+site/full. The copy keeps the picture data byte for byte but not the metadata (Exif, XMP,
+IPTC, comments): a JPG exported with a location or a camera serial in it must not publish them.
+Derivatives are rebuilt only when the source file's mtime or size changes
 (site/.manifest.json), so a rerun after a single new image is quick.
 """
 import argparse
@@ -22,6 +24,7 @@ import html
 import io
 import json
 import os
+import re
 import shutil
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -34,7 +37,7 @@ import minyaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 THUMB, DISPLAY = 600, 2560
-GEN_VERSION = 1  # bump to force every derivative to be rebuilt
+GEN_VERSION = 2  # bump to force every derivative to be rebuilt (2: full/ copies lose their metadata)
 
 SCOPES = {"S30P": "Seestar S30 Pro", "D3": "Dwarf 3"}
 # How the filter shows on the site. Seestar files say IRCUT for "LP off" (broadband).
@@ -52,6 +55,9 @@ GROUPS = [
     ("other", "Other", ()),
 ]
 GROUP_ORDER = ["emission", "reflection", "snr", "planetary", "galaxies", "clusters", "solar", "other"]
+
+RECENT = 6  # cards in the "What's new" row
+NEW_DAYS = 14  # a target updated this recently gets a "new" badge
 
 esc = html.escape
 
@@ -84,35 +90,122 @@ def srgb_bytes():
     return _SRGB
 
 
+ORIENTATION = 0x0112  # the one Exif tag the full-res copy keeps
+
+
+def strip_metadata(src, dst, orientation=None):
+    """Copy the JPEG at src to dst without its metadata. The picture data, the JFIF and Adobe
+    headers and the ICC profile are kept byte for byte; every other APPn segment (Exif, XMP,
+    IPTC/Photoshop, MPF previews) and comments are dropped, also between the scans of a
+    progressive file, and so is anything after the EOI marker (motion-photo videos and maker
+    trailers live there). An orientation of 2..8 is written back as a one-tag Exif block, so the
+    copy shows the same way up as the original. Raises ValueError for anything that is not a
+    JPEG stream."""
+    with open(src, "rb") as f:
+        data = f.read()
+    n = len(data)
+    if data[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG")
+    exif = b""
+    if isinstance(orientation, int) and 2 <= orientation <= 8:  # the values exif_transpose honours
+        tiff = (b"II*\0" + (8).to_bytes(4, "little") + (1).to_bytes(2, "little")
+                + ORIENTATION.to_bytes(2, "little") + (3).to_bytes(2, "little") + (1).to_bytes(4, "little")
+                + orientation.to_bytes(2, "little") + b"\0\0" + b"\0\0\0\0")
+        payload = b"Exif\0\0" + tiff
+        exif = b"\xff\xe1" + (len(payload) + 2).to_bytes(2, "big") + payload
+    out = [b"\xff\xd8"]
+    i = 2
+    while True:
+        while i + 1 < n and data[i] == 0xFF and data[i + 1] == 0xFF:  # fill bytes before a marker
+            i += 1
+        if i + 1 >= n or data[i] != 0xFF:
+            raise ValueError("corrupt JPEG header")
+        marker = data[i + 1]
+        if marker == 0xD9:  # EOI: the picture ends here, whatever follows is not it
+            out.append(b"\xff\xd9")
+            break
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:  # TEM, RSTn: no length
+            out.append(data[i:i + 2])
+            i += 2
+            continue
+        ln = int.from_bytes(data[i + 2:i + 4], "big") if i + 4 <= n else 0
+        if ln < 2 or i + 2 + ln > n:
+            raise ValueError("corrupt JPEG header")
+        seg = data[i:i + 2 + ln]
+        payload = seg[4:]
+        if 0xE0 <= marker <= 0xEF or marker == 0xFE:  # APPn or COM
+            keep = (marker == 0xE0 or (marker == 0xE2 and payload.startswith(b"ICC_PROFILE\0"))
+                    or (marker == 0xEE and payload.startswith(b"Adobe")))
+        else:  # tables, frame and scan headers, restart interval, ...
+            keep = True
+        if keep:
+            if exif and marker != 0xE0:  # no JFIF header: Exif goes first instead
+                out.append(exif)
+                exif = b""
+            out.append(seg)
+            if exif and marker == 0xE0:  # JFIF must stay right after SOI; Exif follows it
+                out.append(exif)
+                exif = b""
+        i += 2 + ln
+        if marker != 0xDA:
+            continue
+        # SOS: entropy-coded data up to the next marker. FF00 is a stuffed byte, FFD0-D7 a
+        # restart marker and FFFF a fill byte; none of them ends the scan.
+        j = i
+        while True:
+            j = data.find(b"\xff", j)
+            if j < 0 or j + 1 >= n:  # no EOI at all: keep what there is, it is all picture
+                j = n
+                break
+            m = data[j + 1]
+            if m == 0 or 0xD0 <= m <= 0xD7:
+                j += 2
+            elif m == 0xFF:
+                j += 1
+            else:
+                break
+        out.append(data[i:j])
+        i = j
+        if i >= n:
+            break
+    with open(dst, "wb") as f:
+        f.write(b"".join(out))
+
+
 def make_derivatives(job):
     """Worker: one source JPG -> thumb + display JPG + full-res copy. Returns sizes."""
     src, thumb, display, full = job
     im = Image.open(src)
+    orientation = im.getexif().get(ORIENTATION)
     im = ImageOps.exif_transpose(im)
     icc = im.info.get("icc_profile")
     if im.mode not in ("RGB", "L"):
         im = im.convert("RGB")
+    warnings = []  # a worker process: warn() here would never reach the parent's status.html
     if icc:
         try:
             im = ImageCms.profileToProfile(
                 im, ImageCms.ImageCmsProfile(io.BytesIO(icc)),
                 ImageCms.createProfile("sRGB"), outputMode="RGB")
-        except ImageCms.PyCMSError as e:
-            warn(f"{os.path.basename(src)}: ICC conversion failed ({e}), assuming sRGB")
+        except (ImageCms.PyCMSError, OSError, ValueError) as e:  # a garbage profile is an OSError
+            warnings.append(f"{os.path.basename(src)}: ICC conversion failed ({e}), assuming sRGB")
     if im.mode != "RGB":
         im = im.convert("RGB")
     W, H = im.size
-    out = {"w": W, "h": H, "bytes": os.path.getsize(src)}
+    out = {"w": W, "h": H, "warnings": warnings}
     for path, edge, q, sub in ((display, DISPLAY, 88, 0), (thumb, THUMB, 82, 2)):
         r = im.copy()
+        for k in ("comment", "xmp"):  # Pillow carries a COM segment over; nothing else from the source
+            r.info.pop(k, None)
         r.thumbnail((edge, edge), Image.LANCZOS)  # never upscales
         tmp = path + ".tmp"
         r.save(tmp, "JPEG", quality=q, progressive=True, optimize=True,
                subsampling=sub, icc_profile=srgb_bytes())
         os.replace(tmp, path)
         out["dw" if edge == DISPLAY else "tw"], out["dh" if edge == DISPLAY else "th"] = r.size
-    shutil.copyfile(src, full + ".tmp")
+    strip_metadata(src, full + ".tmp", orientation)
     os.replace(full + ".tmp", full)
+    out["bytes"] = os.path.getsize(full)
     return out
 
 
@@ -133,6 +226,10 @@ class Images:
     def add(self, slug, name):
         """Register `name` (a file in Finished/) under `slug`; returns the slug or None if missing."""
         if not name:
+            return None
+        name = str(name)
+        if "/" in name or os.sep in name or name in (".", ".."):
+            warn(f"not a plain file name in Finished/: {name!r}")
             return None
         if not os.path.isfile(os.path.join(self.src_dir, name)):
             warn(f"missing in Finished/: {name}")
@@ -163,10 +260,12 @@ class Images:
                         for slug, key in todo]
                 for slug, key, fut in futs:
                     try:
-                        self.manifest[slug] = {**key, **fut.result()}
+                        res = fut.result()
                     except Exception as e:  # unreadable or half-copied JPG: keep the rest of the site going
                         old = self.manifest.get(slug)
-                        if old and all(map(os.path.exists, self.paths(slug))):
+                        # only a derivative set of this generation may stand in: an older full/
+                        # copy would still carry the metadata GEN_VERSION 2 strips
+                        if old and old.get("v") == GEN_VERSION and all(map(os.path.exists, self.paths(slug))):
                             warn(f"cannot read {key['src']} ({e}); still showing {old['src']}")
                             self.wanted[slug] = old["src"]
                         else:
@@ -174,16 +273,26 @@ class Images:
                             self.failed.add(slug)
                             del self.wanted[slug]
                         continue
+                    for w in res.pop("warnings", ()):
+                        warn(w)
+                    self.manifest[slug] = {**key, **res}
                     print(f"  {slug}", file=sys.stderr)
         else:
             print(f"images: all {len(self.wanted)} up to date", file=sys.stderr)
-        # drop derivatives of images no longer picked
+        self.save_manifest()
+
+    def prune(self):
+        """Drop the derivatives of images no longer picked. Called once the pages are written, so a
+        build that dies in between never leaves a page pointing at a deleted image."""
         for slug in list(self.manifest):
             if slug not in self.wanted:
                 for p in self.paths(slug):
                     if os.path.exists(p):
                         os.remove(p)
                 del self.manifest[slug]
+        self.save_manifest()
+
+    def save_manifest(self):
         with open(self.mpath + ".tmp", "w") as f:
             json.dump(self.manifest, f, indent=1, sort_keys=True)
         os.replace(self.mpath + ".tmp", self.mpath)
@@ -210,7 +319,7 @@ def input_paths(root=None, finished=None, picks=None, inventory=None, source=Non
     if root:
         finished = finished or os.path.join(root, "Finished")
         picks = picks or os.path.join(root, "Gallery", "picks.yaml")
-        source = source or os.path.join(root, "Source Data")
+        source = source or root
         nina = nina or os.path.join(root, "NINA")
         reject = reject or inventory_scan.find_reject(root, nina)
         inv = os.path.join(root, "Gallery", "inventory.json")
@@ -223,19 +332,29 @@ def input_paths(root=None, finished=None, picks=None, inventory=None, source=Non
 
 
 def load_inventory(paths):
-    """Session list from paths["inventory"] if set, else from scanning Source Data and NINA;
+    """Session list from paths["inventory"] if set, else from scanning the Seestar, Dwarf and NINA
+    folders;
     None when neither has any."""
     inv_path, source, nina = paths["inventory"], paths["source"], paths["nina"]
     if inv_path:
         with open(inv_path) as f:
             sessions = json.load(f)
         if not sessions:
-            sys.exit(f"{inv_path} has no sessions; delete it to scan Source Data instead")
+            sys.exit(f"{inv_path} has no sessions; delete it to scan the capture folders instead")
+        try:
+            for s in sessions:
+                s["scope"], s["target"], s["night"] = str(s.get("scope") or ""), str(s.get("target") or ""), str(s.get("night") or "")
+                s["frames"], s["exp"], s["hours"] = int(s.get("frames") or 0), float(s.get("exp") or 0), float(s.get("hours") or 0)
+        except (TypeError, ValueError, AttributeError) as e:
+            sys.exit(f"{inv_path}: unusable session {s!r} ({e})")
         print(f"sessions: {len(sessions)} from {inv_path}", file=sys.stderr)
         return sessions
-    have = [p for p in (source, nina) if p and os.path.isdir(p)]
+    have = [p for p, ok in ((source, inventory_scan.has_captures(source)),
+                            (nina, nina and os.path.isdir(nina))) if ok]
     if have:
         sessions = inventory_scan.scan(source, nina, paths["reject"])
+        for problem in inventory_scan.PROBLEMS:
+            warn(problem)
         if sessions:
             hours = sum(s["hours"] for s in sessions)
             print(f"sessions: {len(sessions)} ({hours:.1f} h) from {' + '.join(have)}"
@@ -243,7 +362,7 @@ def load_inventory(paths):
             return sessions
         warn(f"no capture sessions found in {' or '.join(have)}; building without session data")
     else:  # images still publish; hours, nights and session tables are left out
-        warn(f"no inventory.json and no Source Data or NINA folder ({source}); building without session data")
+        warn(f"no inventory.json and no Seestar S30 Pro, Dwarf 3 or NINA folder in {source}; building without session data")
     return None
 
 
@@ -256,10 +375,20 @@ def load_picks(picks_path):
     return (minyaml.load(picks_path) or {}).get("targets") or []
 
 
+def utf8_name(name):
+    """False (with a warning) for a file name that is not valid UTF-8: it could not be written into a page."""
+    try:
+        name.encode("utf-8")
+        return True
+    except UnicodeEncodeError:
+        warn(f"file name is not UTF-8, skipped: {name!r}")
+        return False
+
+
 def load_targets(picks_path, inventory, images):
     """picks.yaml merged with the automatic picks from the Finished/ file names (autopicks.py)."""
     try:
-        files = sorted(e.name for e in os.scandir(images.src_dir) if e.is_file())
+        files = sorted(e.name for e in os.scandir(images.src_dir) if e.is_file() and utf8_name(e.name))
     except OSError as e:
         sys.exit(f"cannot read {images.src_dir}: {e}")
     picks = load_picks(picks_path)
@@ -273,14 +402,20 @@ def load_targets(picks_path, inventory, images):
     targets, seen = [], set()
     for p in entries:
         tid = str(p.get("id") or "")
-        if not tid or tid in seen:
-            warn(f"pick without a unique id: {p.get('name')!r}")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", tid) or tid in seen:  # it names files and pages
+            warn(f"pick without a usable, unique id: {p.get('id')!r} ({p.get('name')!r})")
             continue
         seen.add(tid)
         if p.get("show") is False:
             continue
-        t = {"id": tid, "name": p.get("name") or tid, "kind": p.get("kind") or "",
-             "goal": p.get("goal_h"), "group": group_of(p.get("kind"))}
+        goal = p.get("goal_h")
+        try:
+            goal = float(goal) if goal not in (None, "") else None
+        except (TypeError, ValueError):
+            warn(f"{tid}: goal_h {goal!r} is not a number, ignored")
+            goal = None
+        kind = str(p.get("kind") or "")
+        t = {"id": tid, "name": str(p.get("name") or tid), "kind": kind, "goal": goal, "group": group_of(kind)}
 
         t["natural"] = images.add(f"{tid}-natural", p.get("natural"))
         t["hoo"] = images.add(f"{tid}-hoo", p.get("hoo"))
@@ -299,7 +434,10 @@ def load_targets(picks_path, inventory, images):
         t["src"] = images.wanted  # slug -> source name, for captions
 
         sessions = []
-        for key in p.get("sessions") or []:
+        keys = p.get("sessions") or []
+        if isinstance(keys, str):
+            keys = [keys]
+        for key in keys:
             if inventory is not None and key not in by_key:
                 warn(f"{tid}: session key {key!r} not in the capture sessions")
             sessions += [s for s in by_key.get(key, []) if s.get("frames", 0) > 0]
@@ -326,6 +464,29 @@ def drop_failed(targets, images):
         t["alts"] = [x for x in t["alts"] if x not in f]
         out.append(t)
     return out
+
+
+def set_updated(targets, images):
+    """t["updated"] (YYYY-MM-DD): the latest night in the names of the images the target shows,
+    or the file's modification date for a name without nights (a picks.yaml file)."""
+    for t in targets:
+        days = []
+        for slug in [t["natural"], t["hoo"], *t["inset"].values(), *t["alts"]]:
+            if not slug:
+                continue
+            name = images.wanted[slug]
+            p = autopicks.parse(name)
+            if p:
+                days.append(max(p["nights"]))
+            else:
+                mtime = os.path.getmtime(os.path.join(images.src_dir, name))
+                days.append(dt.date.fromtimestamp(mtime).strftime("%Y%m%d"))
+        d = max(days)
+        t["updated"] = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+
+
+def is_new(t, today):
+    return (today - dt.date.fromisoformat(t["updated"])).days <= NEW_DAYS
 
 
 def filter_name(s):
@@ -390,10 +551,11 @@ def card_kind(kind):
     return ", ".join(w for w in (x.strip() for x in kind.split(",")) if w.lower() != "mosaic")
 
 
-def card(t, images):
+def card(t, images, today, dated=False):
+    """One index card; `dated` adds an "Updated" line (the What's new and Newest first views)."""
     slug = t["hoo"] or t["natural"]
     i = images.info(slug)
-    meta = []
+    meta = [f'Updated {t["updated"]}'] if dated else []
     if t["scopes"]:
         meta.append(" + ".join(SCOPES[s] for s in t["scopes"]))
     if t["nights"]:
@@ -403,58 +565,69 @@ def card(t, images):
         meta.append(", ".join(t["filters"]))
     badges = "".join(f'<span class="badge">{b}</span>' for b in
                      (["HOO"] if t["hoo"] else []) + (["mosaic"] if "mosaic" in t["kind"].lower() else []))
-    return f"""<a class="card" href="{t['id']}.html">
+    if is_new(t, today):
+        badges += '<span class="badge new">new</span>'
+    return f"""<a class="card" href="{esc(t['id'])}.html">
   <img src="img/{slug}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}" loading="lazy">
   <div class="card-body">
     <h3>{esc(t['name'])}</h3>
     <p class="kind">{esc(card_kind(t['kind']))}{badges}</p>
     {depth_bar(t)}
-    {"".join(f'<p class="meta">{esc(m)}</p>' for m in meta)}
+    {"".join(f'<p class="meta{" updated" if dated and not n else ""}">{esc(m)}</p>' for n, m in enumerate(meta))}
   </div>
 </a>"""
 
 
-def index_html(targets, images, generated):
+def index_html(targets, images, generated, today):
     present = [g for g in GROUP_ORDER if any(t["group"] == g for t in targets)]
     names = {gid: label for gid, label, _ in GROUPS}
     chips = ['<input type="radio" name="f" id="f-all" class="sr" checked><label for="f-all">All</label>']
     rules = []
-    for g in present:
-        chips.append(f'<input type="radio" name="f" id="f-{g}" class="sr"><label for="f-{g}">{names[g]}</label>')
+    for g in present + ["newest"]:
+        label = "Newest first" if g == "newest" else names[g]
+        chips.append(f'<input type="radio" name="f" id="f-{g}" class="sr"><label for="f-{g}">{label}</label>')
         rules.append(f"body:has(#f-{g}:checked) .group:not(#g-{g}){{display:none}}")
-    sections = []
+    # "All" shows the What's new row above the groups; "Newest first" shows every target by date instead
+    rules.append("#g-newest{display:none} body:has(#f-newest:checked) #g-newest{display:block}")
+    by_date = sorted(targets, key=lambda t: t["updated"], reverse=True)  # stable: page order breaks ties
+    recent = "\n".join(card(t, images, today, dated=True) for t in by_date[:RECENT])
+    sections = [f'<section class="group" id="g-recent"><h2>What\'s new</h2>\n<div class="grid">\n{recent}\n</div></section>']
     for g in present:
-        cards = "\n".join(card(t, images) for t in targets if t["group"] == g)
+        cards = "\n".join(card(t, images, today) for t in targets if t["group"] == g)
         sections.append(f'<section class="group" id="g-{g}"><h2>{names[g]}</h2>\n<div class="grid">\n{cards}\n</div></section>')
+    newest = "\n".join(card(t, images, today, dated=True) for t in by_date)
+    sections.append(f'<section class="group" id="g-newest"><h2>Newest first</h2>\n<div class="grid">\n{newest}\n</div></section>')
     total = sum(t["hours"] for t in targets)
     body = f"""<header class="site-header">
-  <h1>Astro gallery</h1>
-  <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3, Bortle 6–7</p>
+  <h1>Deep sky from a Bortle 8.6 backyard</h1>
+  <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3 smart telescopes, narrowband filters against the suburban glow</p>
   <nav class="filters" aria-label="Filter by kind">{"".join(chips)}</nav>
 </header>
 <main>
 {chr(10).join(sections)}
 </main>"""
-    return page("Astro gallery", body, generated, extra_head=f"<style>{' '.join(rules)}</style>\n")
+    return page("Deep sky from a Bortle 8.6 backyard · bortle9.space", body, generated, extra_head=f"<style>{' '.join(rules)}</style>\n")
 
 
-def figure(slug, images, cls, caption):
+def figure(slug, images, cls, caption, alt):
     i = images.info(slug)
     mb = i["bytes"] / 1e6
     return f"""<figure class="{cls}">
   <a href="img/{slug}-{DISPLAY}.jpg"><img src="img/{slug}-{DISPLAY}.jpg"
     srcset="img/{slug}-{THUMB}.jpg {i['tw']}w, img/{slug}-{DISPLAY}.jpg {i['dw']}w"
-    sizes="(max-width: 1200px) 100vw, 1200px" width="{i['dw']}" height="{i['dh']}" alt="{esc(caption)}"></a>
+    sizes="(max-width: 1200px) 100vw, 1200px" width="{i['dw']}" height="{i['dh']}" alt="{esc(alt)}"></a>
   <figcaption><span class="file">{esc(caption)}</span>
     <a class="dl" href="full/{slug}.jpg" download="{esc(caption)}">Full resolution · {i['w']}×{i['h']} · {mb:.1f} MB</a></figcaption>
 </figure>"""
 
 
-def viewer(vid, nat, hoo, t, images):
-    """A natural/HOO pair with a CSS-only toggle (HOO checked first); a single image otherwise."""
+def viewer(vid, nat, hoo, t, images, what=""):
+    """A natural/HOO pair with a CSS-only toggle (HOO checked first); a single image otherwise.
+    `what` names the viewer in the alt text ("detail"); the file name stays in the caption."""
+    alt = t["name"] + (f", {what}" if what else "")
     if not (nat and hoo):
         s = nat or hoo
-        return f'<div class="viewer single">{figure(s, images, "shown", t["src"][s])}</div>'
+        return f'<div class="viewer single">{figure(s, images, "shown", t["src"][s], alt + (", HOO" if hoo else ""))}</div>'
     return f"""<div class="viewer">
   <input type="radio" name="{vid}" id="{vid}-hoo" class="sr r-hoo" checked>
   <input type="radio" name="{vid}" id="{vid}-nat" class="sr r-nat">
@@ -462,8 +635,8 @@ def viewer(vid, nat, hoo, t, images):
     <label for="{vid}-hoo" class="l-hoo">HOO</label><label for="{vid}-nat" class="l-nat">Natural</label>
   </div>
   <div class="frames">
-    {figure(hoo, images, "f-hoo", t["src"][hoo])}
-    {figure(nat, images, "f-nat", t["src"][nat])}
+    {figure(hoo, images, "f-hoo", t["src"][hoo], alt + ", HOO")}
+    {figure(nat, images, "f-nat", t["src"][nat], alt + ", natural")}
   </div>
 </div>"""
 
@@ -476,8 +649,8 @@ def night_cell(night, one_year):
 def target_html(t, prev, nxt, images, generated):
     parts = [f"""<header class="target-header">
   <nav class="crumbs"><a href="index.html">← Gallery</a>
-    <span class="pn">{f'<a href="{prev["id"]}.html">‹ {esc(prev["name"])}</a>' if prev else ''}
-    {f'<a href="{nxt["id"]}.html">{esc(nxt["name"])} ›</a>' if nxt else ''}</span></nav>
+    <span class="pn">{f'<a href="{esc(prev["id"])}.html">‹ {esc(prev["name"])}</a>' if prev else ''}
+    {f'<a href="{esc(nxt["id"])}.html">{esc(nxt["name"])} ›</a>' if nxt else ''}</span></nav>
   <h1>{esc(t['name'])}</h1>
   <p class="kind">{esc(t['kind'])}</p>
 </header>
@@ -494,14 +667,14 @@ def target_html(t, prev, nxt, images, generated):
 
     ins = t["inset"]
     if ins["natural"] or ins["hoo"]:
-        parts.append('<section><h2>Detail</h2>' + viewer("inset", ins["natural"], ins["hoo"], t, images) + "</section>")
+        parts.append('<section><h2>Detail</h2>' + viewer("inset", ins["natural"], ins["hoo"], t, images, "detail") + "</section>")
 
     if t["alts"]:
         items = []
-        for s in t["alts"]:
+        for n, s in enumerate(t["alts"], 1):
             i = images.info(s)
             items.append(f"""<figure>
-  <a href="img/{s}-{DISPLAY}.jpg"><img src="img/{s}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['src'][s])}" loading="lazy"></a>
+  <a href="img/{s}-{DISPLAY}.jpg"><img src="img/{s}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}, other version {n}" loading="lazy"></a>
   <figcaption><span class="file">{esc(t['src'][s])}</span>
     <a class="dl" href="full/{s}.jpg" download="{esc(t['src'][s])}">Full resolution · {i['w']}×{i['h']}</a></figcaption>
 </figure>""")
@@ -510,7 +683,7 @@ def target_html(t, prev, nxt, images, generated):
     if t["sessions"]:
         one_year = len({n[:4] for n in t["nights"]}) == 1
         rows = "".join(
-            f'<tr><td>{night_cell(s["night"], one_year)}</td><td><span class="long">{SCOPES.get(s["scope"], s["scope"])}</span><span class="short">{s["scope"]}</span></td><td class="flt">{esc(filter_name(s))}</td>'
+            f'<tr><td>{night_cell(esc(s["night"]), one_year)}</td><td><span class="long">{esc(SCOPES.get(s["scope"], s["scope"]))}</span><span class="short">{esc(s["scope"])}</span></td><td class="flt">{esc(filter_name(s))}</td>'
             f'<td class="num">{s["frames"]} × {fmt_exp(s["exp"])}</td><td class="num">{s["hours"]:.2f}</td></tr>'
             for s in t["sessions"])
         parts.append(f"""<section><h2>Sessions</h2>
@@ -522,7 +695,7 @@ def target_html(t, prev, nxt, images, generated):
 <p class="note">Frames the scope stacked, not frames taken. Night = local evening the session started.</p>
 </section>""")
     parts.append("</main>")
-    return page(f"{t['name']} · Astro gallery", "\n".join(parts), generated)
+    return page(f"{t['name']} · bortle9.space", "\n".join(parts), generated)
 
 
 def goal_of(t):
@@ -551,21 +724,21 @@ def status_html(targets, images, unnamed, generated):
                      "so they are not on the site. Rename them, or use them from picks.yaml.</p><ul class=\"files\">"
                      + "".join(f"<li>{esc(n)}</li>" for n in unnamed) + "</ul></section>")
     rows = "".join(
-        f'<tr><td><a href="{t["id"]}.html">{esc(t["name"])}</a></td>'
+        f'<tr><td><a href="{esc(t["id"])}.html">{esc(t["name"])}</a></td>'
         f'<td class="file">{esc(images.wanted.get(t["hoo"] or t["natural"], ""))}</td>'
         f'<td class="num">{t["hours"]:.1f}{goal_of(t)}</td>'
         f'<td class="num">{len(t["nights"])}</td></tr>' for t in targets)
     parts.append(f"""<section><h2>Targets</h2><div class="table-wrap"><table class="sessions">
 <thead><tr><th>Target</th><th>Main image</th><th class="num">Hours / goal</th><th class="num">Nights</th></tr></thead>
 <tbody>{rows}</tbody></table></div></section></main>""")
-    return page("Build status · Astro gallery", "\n".join(parts), generated)
+    return page("Build status · Astro gallery", "\n".join(parts), generated[:10])
 
 
 # ---------------------------------------------------------------- main
 
 def finished_jpgs(folder):
     try:
-        return sorted(e.name for e in os.scandir(folder) if e.is_file()
+        return sorted(e.name for e in os.scandir(folder) if e.is_file() and utf8_name(e.name)
                       and e.name.lower().endswith((".jpg", ".jpeg")) and not e.name.startswith("."))
     except OSError:
         return []
@@ -578,6 +751,58 @@ def write(path, text):
     os.replace(tmp, path)
 
 
+def selftest():
+    """strip_metadata and make_derivatives against a progressive JPEG carrying every kind of
+    metadata they must drop, plus a fill byte, a comment between scans and a trailer after EOI
+    (make test)."""
+    import tempfile
+    im = Image.effect_mandelbrot((320, 200), (-2, -1.5, 1, 1.5), 40).convert("RGB")
+    exif = Image.Exif()
+    exif[ORIENTATION] = 6
+    exif[0xA431] = "SERIAL"
+    exif.get_ifd(0x8825)[29] = "GPSDATE"
+    icc = srgb_bytes()
+    secrets = (b"SERIAL", b"GPSDATE", b"COMMENT", b"XMP", b"MIDSCAN", b"TRAILER")
+    with tempfile.TemporaryDirectory() as d:
+        src, dst = os.path.join(d, "a.jpg"), os.path.join(d, "b.jpg")
+        im.save(src, "JPEG", progressive=True, exif=exif, icc_profile=icc, comment=b"COMMENT", xmp=b"<x>XMP</x>")
+        with open(src, "rb") as f:
+            raw = f.read()
+        assert raw.count(b"\xff\xda") > 1 and raw.endswith(b"\xff\xd9"), "fixture not progressive"
+        dqt = raw.index(b"\xff\xdb")
+        second_sos = raw.index(b"\xff\xda", raw.index(b"\xff\xda") + 2)
+        com = b"\xff\xfe" + (9).to_bytes(2, "big") + b"MIDSCAN"
+        raw = raw[:dqt] + b"\xff" + raw[dqt:second_sos] + com + raw[second_sos:] + b"TRAILER-GPS"
+        with open(src, "wb") as f:
+            f.write(raw)
+        assert all(s in raw for s in secrets + (b"ICC_PROFILE",)), "bad fixture"
+        assert Image.open(src).tobytes(), "Pillow cannot read the fixture"
+
+        strip_metadata(src, dst, 6)
+        with open(dst, "rb") as f:
+            out = f.read()
+        assert not any(s in out for s in secrets), "metadata left in"
+        assert out.endswith(b"\xff\xd9") and b"\xff\xff\xdb" not in out, "trailer or fill byte kept"
+        b = Image.open(dst)
+        assert b.tobytes() == Image.open(src).tobytes(), "pixels changed"
+        assert b.info.get("icc_profile") == icc, "ICC profile lost"
+        assert dict(b.getexif()) == {ORIENTATION: 6}, f"exif {dict(b.getexif())}"
+        assert "comment" not in b.info and "xmp" not in b.info, list(b.info)
+        for o in (1, None, (6, 6), 0):
+            strip_metadata(src, dst, o)
+            with open(dst, "rb") as f:
+                assert b"Exif" not in f.read(), f"orientation {o!r} wrote Exif"
+
+        paths = tuple(os.path.join(d, p) for p in ("t.jpg", "d.jpg", "f.jpg"))
+        info = make_derivatives((src, *paths))
+        assert (info["dw"], info["dh"]) == (200, 320), info  # transposed
+        for p in paths:
+            with open(p, "rb") as f:
+                assert not any(s in f.read() for s in secrets), f"{os.path.basename(p)} leaks"
+        assert dict(Image.open(paths[2]).getexif()) == {ORIENTATION: 6}
+    print("selftest: ok", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     env = os.environ.get
@@ -585,39 +810,48 @@ def main():
     ap.add_argument("--finished", help="folder of finished JPGs (default $GALLERY_FINISHED or <root>/Finished)")
     ap.add_argument("--picks", help="default $GALLERY_PICKS or <root>/Gallery/picks.yaml")
     ap.add_argument("--inventory", help="sessions file; default $GALLERY_INVENTORY or "
-                    "<root>/Gallery/inventory.json if it exists, else Source Data and NINA are scanned")
+                    "<root>/Gallery/inventory.json if it exists, else the capture folders are scanned")
     ap.add_argument("--no-inventory", action="store_true",
                     help="scan even if inventory.json exists (same as GALLERY_INVENTORY=none)")
-    ap.add_argument("--source", help="Source Data folder to scan (default $GALLERY_SOURCE or <root>/Source Data)")
+    ap.add_argument("--source", help="folder holding Seestar S30 Pro/ and Dwarf 3/ to scan (default $GALLERY_SOURCE or <root>)")
     ap.add_argument("--nina", help="NINA folder to scan (default $GALLERY_NINA or <root>/NINA); subs listed in "
                     "<root>/SirilWork/PI/nina_reject.json or <root>/NINA/nina_reject.json "
                     "($GALLERY_NINA_REJECT) are left out")
     ap.add_argument("--out", default=env("GALLERY_OUT") or os.path.join(HERE, "site"))
     ap.add_argument("--jobs", type=int, default=int(env("GALLERY_JOBS") or 0) or os.cpu_count() or 4)
+    ap.add_argument("--selftest", action="store_true", help="check the metadata stripping and exit")
     a = ap.parse_args()
+    if a.selftest:
+        return selftest()
 
     paths = input_paths(a.root, a.finished, a.picks, "none" if a.no_inventory else a.inventory, a.source, a.nina)
     images = Images(paths["finished"], a.out)
     targets = load_targets(paths["picks"], load_inventory(paths), images)
     images.build(a.jobs)
     targets = drop_failed(targets, images)
+    set_updated(targets, images)
     used = set(images.wanted.values())
     unnamed = [n for n in finished_jpgs(paths["finished"]) if n not in used and not autopicks.parse(n)]
 
-    generated = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    now = dt.datetime.now().astimezone()
+    generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html (LAN only)
+    day = now.strftime("%Y-%m-%d")  # the public footer: a time zone would say where the builder is
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
     keep = {"index.html", "status.html", "style.css", ".manifest.json", "img", "full"}
-    write(os.path.join(a.out, "index.html"), index_html(ordered, images, generated))
+    write(os.path.join(a.out, "index.html"), index_html(ordered, images, day, now.date()))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
         nxt = ordered[n + 1] if n + 1 < len(ordered) else None
-        write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, generated))
+        write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, day))
         keep.add(f"{t['id']}.html")
     write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated))
-    shutil.copyfile(os.path.join(HERE, "static", "style.css"), os.path.join(a.out, "style.css"))
+    css = os.path.join(a.out, "style.css")
+    shutil.copyfile(os.path.join(HERE, "static", "style.css"), css + ".tmp")
+    os.replace(css + ".tmp", css)
     for name in os.listdir(a.out):  # pages of targets that were removed or hidden
         if name.endswith(".html") and name not in keep:
             os.remove(os.path.join(a.out, name))
+    images.prune()
 
     print(f"site: {len(ordered)} targets -> {a.out}", file=sys.stderr)
     for t in ordered:

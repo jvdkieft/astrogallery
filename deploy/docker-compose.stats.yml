@@ -1,0 +1,44 @@
+# Traffic stats for the gallery. Optional: deploy.sh adds this file to `docker compose` only
+# when $APPDATA/stats.env exists on boris. See deploy/PUBLISH.md "Traffic stats".
+#
+# stats.env holds two lines and is never in the repo:
+#   INFLUX_URL=http://192.168.1.4:8086      InfluxDB 1.8 on escher; database "astrogallery"
+#   CF_API_TOKEN=...                        Cloudflare token, Zone / Analytics:Read on bortle9.space only
+#
+# astrogallery-stats (Telegraf) tails the JSON access log nginx writes to ./logs and scrapes the
+# Cloudflare exporter every 5 minutes; both go to InfluxDB, where the Grafana dashboard in
+# deploy/grafana/ reads them.
+services:
+  astrogallery-stats:
+    image: telegraf:1.40-alpine
+    container_name: astrogallery-stats
+    restart: unless-stopped
+    env_file:
+      - stats.env
+    volumes:
+      - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./logs:/logs:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - astrogallery-cf-exporter
+
+  astrogallery-cf-exporter:
+    image: ghcr.io/lablabs/cloudflare_exporter:latest
+    container_name: astrogallery-cf-exporter
+    restart: unless-stopped
+    env_file:
+      - stats.env
+    environment:
+      FREE_TIER: "true"
+      CF_ZONES: "3fcb25fe008a40cb7666bbad075e7909"  # bortle9.space
+      SCRAPE_INTERVAL: "60"  # telegraf.conf scrapes at the same cadence
+      SCRAPE_DELAY: "300"
+      LISTEN: ":8080"
+      LOG_LEVEL: "warn"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true

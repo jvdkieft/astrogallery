@@ -5,7 +5,7 @@
 
 Polls the files gallery.py reads (GALLERY_ROOT and the other GALLERY_* variables, see
 gallery.py --help): picks.yaml, the JPGs in Finished/, the stacks and shotsInfo.json files
-in Source Data/ and the subs in NINA/ (or inventory.json when that is used instead). Reruns gallery.py once they have
+in Seestar S30 Pro/ and Dwarf 3/ and the subs in NINA/ (or inventory.json when that is used instead). Reruns gallery.py once they have
 stopped changing for one poll, so a JPG that is still being copied over SMB is not picked up
 half-written. Polling rather than inotify because writes that arrive through Unraid's
 /mnt/user (shfs) or SMB do not reliably raise events.
@@ -42,22 +42,33 @@ def signature():
     try:
         with os.scandir(finished) as it:
             for e in it:
-                if e.is_file() and e.name.lower().endswith((".jpg", ".jpeg")):
-                    st = e.stat()
-                    sig.append((e.name, st.st_mtime, st.st_size))
+                try:
+                    if e.is_file() and e.name.lower().endswith((".jpg", ".jpeg")):
+                        st = e.stat()
+                        sig.append((e.name, st.st_mtime, st.st_size))
+                except OSError:  # one entry vanishing mid-poll must not hide the rest
+                    sig.append((e.name, None, None))
     except OSError as e:
         print(f"watch: cannot read {finished}: {e}", file=sys.stderr, flush=True)
     return sorted(sig, key=str)
 
 
 def build():
+    """Run gallery.py once; True when it succeeded."""
     t0 = time.time()
-    r = subprocess.run([sys.executable, os.path.join(HERE, "gallery.py")], stderr=subprocess.PIPE, text=True)
-    sys.stderr.write(r.stderr)
-    status = "ok" if r.returncode == 0 else f"FAILED (exit {r.returncode}), retrying on next change"
+    try:
+        r = subprocess.run([sys.executable, os.path.join(HERE, "gallery.py")], stderr=subprocess.PIPE, text=True,
+                           timeout=float(os.environ.get("GALLERY_BUILD_TIMEOUT") or 3600))
+        code, log = r.returncode, r.stderr
+    except subprocess.TimeoutExpired as e:
+        err = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+        code, log = -1, err + "\nbuild timed out\n"
+    sys.stderr.write(log)
+    status = "ok" if code == 0 else f"FAILED (exit {code}), retrying in a few polls or on the next change"
     print(f"watch: build {status} in {time.time() - t0:.0f} s", file=sys.stderr, flush=True)
-    if r.returncode:
-        failed_status(r.stderr)
+    if code:
+        failed_status(log)
+    return code == 0
 
 
 def failed_status(log):
@@ -88,14 +99,18 @@ def main():
     a = ap.parse_args()
 
     built = signature()
-    build()
-    last = built
+    ok = build()
+    last, since = built, 0  # polls since the last build
     while True:
         time.sleep(a.interval)
         now = signature()
-        if now != built and now == last:  # changed since the last build, and settled
+        since += 1
+        # settled, and either changed since the last build or that build failed (a transient
+        # error, say the share hiccupping, then gets another go after five polls)
+        if now == last and (now != built or (not ok and since >= 5)):
             built = now
-            build()
+            ok = build()
+            since = 0
         last = now
 
 

@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""Capture sessions (frames the scope STACKED x exposure) found under a Source Data folder
-and a NINA folder.
+"""Capture sessions (frames the scope STACKED x exposure) found on the telescopes share: the
+Seestar and Dwarf app folders at its root, and the NINA folder.
 
-    python3 inventory.py "<root>/Source Data" [out.json] [--nina "<root>/NINA"] [--reject FILE]
+    python3 inventory.py <root> [out.json] [--nina "<root>/NINA"] [--reject FILE]
 
 Port of SirilWork/PI/py/inventory.py with the folders as arguments instead of
 ~/mnt/scopessd, so the builder on boris can scan the telescopes share itself. gallery.py calls
 scan() directly; the command line prints one line per session (and writes out.json if given).
 
-    Source Data/Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
-    Source Data/Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
-    NINA/<target>/<date>/LIGHT/NNNN.fits      Seestar run from NINA: raw subs, no on-scope stacking.
+    Seestar S30 Pro/<target>/Stacked_<n>_<name>_<exp>s_<filter>_<YYYYmmdd-HHMMSS>.fit
+    Dwarf 3/Astronomy/DWARF_RAW_*/shotsInfo.json
+    NINA/<target>/<date>/LIGHT/NNNN.fits      Seestar run from NINA: raw subs, no on-scope stacking
+    NINA/<date>/<target>/LIGHT/NNNN.fits      (date first since 16 Oct 2026).
         Every sub counts except those listed in the reject file (a JSON list of paths relative to
         NINA/, e.g. "M45/2026-10-07/LIGHT/0064.fits"), grouped by FILTER and EXPTIME.
 """
@@ -32,7 +33,7 @@ CAT = {"M 52": (23.413, 61.59), "NGC 7635": (23.347, 61.20), "IC 443": (6.28, 22
        "IC 1848": (2.86, 60.4), "M 33": (1.565, 30.66), "M 31": (0.712, 41.27),
        "NGC 891": (2.377, 42.35), "M 1": (5.575, 22.01), "M 45": (3.79, 24.1),
        "NGC 7331": (22.62, 34.42), "NGC 7023": (21.03, 68.17), "NGC 281": (0.88, 56.62),
-       "NGC 6960": (20.76, 30.7), "M 27": (19.99, 22.72)}
+       "NGC 6960": (20.76, 30.7), "M 27": (19.99, 22.72), "M 81": (9.926, 69.07)}
 
 
 def evening(t):
@@ -59,8 +60,17 @@ def fexp(v):
     return float(v)
 
 
+SEESTAR_DIR = "Seestar S30 Pro"
+DWARF_DIR = "Dwarf 3"
+
+
+def has_captures(src):
+    """True when src holds a Seestar or Dwarf app folder."""
+    return bool(src) and any(os.path.isdir(os.path.join(src, d)) for d in (SEESTAR_DIR, DWARF_DIR))
+
+
 def seestar_dirs(src):
-    for d in sorted(glob.glob(os.path.join(glob.escape(src), "Seestar S30 Pro", "*", ""))):
+    for d in sorted(glob.glob(os.path.join(glob.escape(src), SEESTAR_DIR, "*", ""))):
         tgt = os.path.basename(os.path.dirname(d))
         if tgt.endswith("_sub") or tgt.lower().startswith(("lunar", "solar")):
             continue
@@ -68,11 +78,16 @@ def seestar_dirs(src):
 
 
 def dwarf_dirs(src):
-    return sorted(glob.glob(os.path.join(glob.escape(src), "Dwarf 3", "Astronomy", "DWARF_RAW_*")))
+    return sorted(glob.glob(os.path.join(glob.escape(src), DWARF_DIR, "Astronomy", "DWARF_RAW_*")))
 
 
-# NINA folder name -> target as the Seestar app would name it
-NINA_NAMES = {"Double Cluster": "NGC 869", "M45": "M 45"}
+# NINA folder name -> target as the Seestar app would name it; mosaic panels count toward the app mosaics
+NINA_NAMES = {"Double Cluster": "NGC 869", "M45": "M 45", "M 45": "M 45",
+              "Veil P1": "mosaic_NGC 6960", "Veil P2": "mosaic_NGC 6960", "Veil complex": "mosaic_NGC 6960",
+              "Veil Complex": "mosaic_NGC 6960", "Heart IC1805": "mosaic_IC 1805", "Soul IC1848": "mosaic_IC 1805",
+              "California NGC1499": "mosaic_NGC 1499", "NGC1893 Field": "mosaic_NGC 1893",
+              "NGC1893 Mosaic": "mosaic_NGC 1893", "Sh2-10B Sadr": "SH2-108 - Sadr Region",
+              "Sh2-108 Sadr": "SH2-108 - Sadr Region"}
 NINA_FILTERS = {"IR": "IRCUT", "LP": "LP", "": "none"}
 
 
@@ -107,13 +122,27 @@ def load_reject(path):
         return set()
 
 
+PROBLEMS = []  # inputs scan() could not read; gallery.py shows them on status.html
+
+
+def problem(msg):
+    PROBLEMS.append(msg)
+    print(f"warning: {msg}", file=sys.stderr)
+
+
 def fits_card(hdr, key, default=""):
-    """Value of a FITS header card, quotes and comment stripped."""
+    """Value of a FITS header card, quotes and comment stripped (a quoted value may hold a /)."""
     k = f"{key:<8}="
     for i in range(0, len(hdr) - 79, 80):
         card = hdr[i:i + 80]
         if card.startswith(k):
-            return card[9:].split("/")[0].strip().strip("'").strip()
+            v = card[9:].strip()
+            if v.startswith("'"):
+                end = v.find("'", 1)
+                while end != -1 and v[end + 1:end + 2] == "'":  # '' is an escaped quote
+                    end = v.find("'", end + 2)
+                return (v[1:end] if end != -1 else v[1:]).replace("''", "'").strip()
+            return v.split("/")[0].strip()
         if card.startswith("END     "):
             break
     return default
@@ -123,7 +152,10 @@ def scan_nina(nina, reject=None):
     out = []
     rej = load_reject(reject) if reject else set()
     for light, subs in nina_subs(nina).items():
-        tdir, day = os.path.relpath(light, nina).split(os.sep)[:2]
+        rel = os.path.relpath(os.path.dirname(light), nina).replace(os.sep, "/")
+        tdir, day = rel.split("/")[:2]
+        if re.match(r"\d{4}-\d{2}-\d{2}$", tdir):
+            tdir, day = day, tdir   # NINA layout since 16 Oct 2026: NINA/<date>/<target>/LIGHT
         grp = {}
         for f in subs:
             if os.path.relpath(f, nina).replace(os.sep, "/") in rej:
@@ -140,7 +172,7 @@ def scan_nina(nina, reject=None):
             g = grp.setdefault((flt, exp), [0, ts])
             g[0] += 1
         for (flt, exp), (n, ts) in grp.items():
-            out.append(dict(scope="S30P", folder=f"NINA/{tdir}/{day}", target=NINA_NAMES.get(tdir, tdir),
+            out.append(dict(scope="S30P", folder=f"NINA/{rel}", target=NINA_NAMES.get(tdir, tdir),
                             night=evening(ts), filter=flt, exp=exp, frames=n, nina=True))
     return out
 
@@ -155,7 +187,8 @@ def find_reject(root, nina=None):
 
 
 def scan(src, nina=None, reject=None):
-    """Sessions in src (Source Data) and, when given, nina (the NINA folder)."""
+    """Sessions in src (the share root, which holds the Seestar and Dwarf folders) and, when
+    given, nina (the NINA folder)."""
     out = []
     if not (src and os.path.isdir(src)):
         src = None
@@ -165,8 +198,12 @@ def scan(src, nina=None, reject=None):
             m = SEESTAR_RE.match(os.path.basename(f))
             if not m:
                 continue
-            n, name, exp, flt = int(m[1]), m[2], float(m[3]), m[4]
-            ts = dt.datetime.strptime(m[5], "%Y%m%d-%H%M%S")
+            try:
+                n, name, exp, flt = int(m[1]), m[2], float(m[3]), m[4]
+                ts = dt.datetime.strptime(m[5], "%Y%m%d-%H%M%S")
+            except ValueError as e:
+                problem(f"skipped {os.path.basename(f)}: {e}")
+                continue
             k = (evening(ts), flt, exp)
             pre = "mosaic_" if name.startswith("mosaic_") else ""
             if name[len(pre):].startswith(("HIP ", "HD ", "TYC ", "SAO ")):
@@ -195,14 +232,17 @@ def scan(src, nina=None, reject=None):
                 s = json.load(fh)
         except Exception:
             continue
-        ts = dt.datetime.strptime(m[1], "%Y-%m-%d-%H-%M-%S")
-        tgt = s.get("target") or os.path.basename(d)
-        if tgt in ("Manual", "Unknown") and s.get("RA") is not None:
-            n = nearest(float(s["RA"]), float(s["DEC"]))
-            tgt = ("M 52" if n in ("M 52", "NGC 7635") else n) if n else tgt
-        out.append(dict(scope="D3", folder=os.path.basename(d), target=tgt, night=evening(ts),
-                        filter=s.get("ir"), exp=fexp(s.get("exp", 0)), frames=int(s.get("shotsStacked", 0)),
-                        taken=s.get("shotsTaken"), mosaic="mosaicInfo" in s, wide="WIDE" in d))
+        try:  # one odd shotsInfo.json must not stop every build
+            ts = dt.datetime.strptime(m[1], "%Y-%m-%d-%H-%M-%S")
+            tgt = str(s.get("target") or os.path.basename(d))
+            if tgt in ("Manual", "Unknown") and s.get("RA") is not None:
+                n = nearest(float(s["RA"]), float(s["DEC"]))
+                tgt = ("M 52" if n in ("M 52", "NGC 7635") else n) if n else tgt
+            out.append(dict(scope="D3", folder=os.path.basename(d), target=tgt, night=evening(ts),
+                            filter=s.get("ir"), exp=fexp(s.get("exp", 0)), frames=int(s.get("shotsStacked") or 0),
+                            taken=s.get("shotsTaken"), mosaic="mosaicInfo" in s, wide="WIDE" in d))
+        except (ValueError, TypeError, KeyError, ZeroDivisionError, AttributeError) as e:
+            problem(f"skipped {j}: {e}")
     seen = set()
     out = [o for o in out if not (o.get("file") and (o["file"] in seen or seen.add(o["file"])))]
     for o in out:
@@ -213,13 +253,13 @@ def scan(src, nina=None, reject=None):
 def main():
     import argparse
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("source", help="the Source Data folder")
+    ap.add_argument("source", help="the telescopes share (holds Seestar S30 Pro/ and Dwarf 3/)")
     ap.add_argument("out", nargs="?", help="also write the sessions to this JSON file")
-    ap.add_argument("--nina", help="the NINA folder (default: NINA next to the Source Data folder)")
-    ap.add_argument("--reject", help="NINA subs to leave out (default: SirilWork/PI/nina_reject.json "
-                    "or NINA/nina_reject.json next to the Source Data folder)")
+    ap.add_argument("--nina", help="the NINA folder (default: <root>/NINA)")
+    ap.add_argument("--reject", help="NINA subs to leave out (default: <root>/SirilWork/PI/nina_reject.json "
+                    "or <root>/NINA/nina_reject.json)")
     a = ap.parse_args()
-    root = os.path.dirname(os.path.abspath(a.source))
+    root = os.path.abspath(a.source)
     nina = a.nina or os.path.join(root, "NINA")
     reject = a.reject or find_reject(root, nina)
     out = scan(a.source, nina, reject)

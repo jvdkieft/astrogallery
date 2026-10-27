@@ -7,7 +7,7 @@ something in it changes. Nothing comes from scopessd any more.
 **To add images or change the site, start with [UPDATING.md](UPDATING.md).** This file is the reference.
 
 ```
-Telescopes/Finished/*.jpg + Source Data/ + NINA/ (+ Gallery/picks.yaml)  --watch.py + gallery.py (boris)-->  site/  --nginx:alpine-->  :8088
+Telescopes/Finished/*.jpg + Seestar S30 Pro/ + Dwarf 3/ + NINA/ (+ Gallery/picks.yaml)  --watch.py + gallery.py (boris)-->  site/  --nginx:alpine-->  :8088
 ```
 
 The share keeps its usual layout; the gallery reads these from it:
@@ -16,17 +16,18 @@ The share keeps its usual layout; the gallery reads these from it:
 Telescopes/
   Finished/          finished JPGs, top level only (TIFs and subfolders are ignored); their
                      names decide the targets and images (autopicks.py)
-  Source Data/       Seestar and Dwarf captures; hours and sessions are counted from here
+  Seestar S30 Pro/   Seestar app captures (<target>/Stacked_*.fit); hours and sessions are counted from here
+  Dwarf 3/           Dwarf captures (Astronomy/DWARF_RAW_*/shotsInfo.json); counted too
   NINA/              Seestar subs captured with NINA; counted too
   SirilWork/PI/nina_reject.json   NINA subs left out of the count (or NINA/nina_reject.json)
   Gallery/
     picks.yaml       optional overrides of the automatic picks
-    inventory.json   optional; only when present it replaces scanning Source Data and NINA
+    inventory.json   optional; only when present it replaces scanning the capture folders
 ```
 
 Drop a correctly named JPG in `Finished/` and the live site updates within a couple of minutes:
 a new object gets its own card, a version with more nights replaces the older one. New captures in
-`Source Data/` or `NINA/` update the hours the same way. Nothing has to be edited. The builder polls every 60 s and builds once the inputs have stopped changing for one poll,
+`Seestar S30 Pro/`, `Dwarf 3/` or `NINA/` update the hours the same way. Nothing has to be edited. The builder polls every 60 s and builds once the inputs have stopped changing for one poll,
 so a file still being copied is not picked up half-written.
 
 ## Use
@@ -39,7 +40,7 @@ make test      # autopicks self-test (also run by GitHub Actions on every push)
 ```
 
 ```
-make archive-check   # what the share is missing from the SSD (Source Data, NINA, Finished, nina_reject.json)
+make archive-check   # what the share is missing from the SSD (Seestar S30 Pro, Dwarf 3, NINA, Finished, nina_reject.json)
 make archive         # copy it: adds files, replaces empty or older copies, never deletes (archive.py)
 ```
 
@@ -59,7 +60,7 @@ Paths are set by flag or environment variable; the builder container uses the va
 | `<root>` (the share) | `--root` | `GALLERY_ROOT` | none; `/data` in the builder |
 | finished JPGs | `--finished` | `GALLERY_FINISHED` | `<root>/Finished` |
 | picks.yaml | `--picks` | `GALLERY_PICKS` | `<root>/Gallery/picks.yaml` |
-| capture data | `--source` | `GALLERY_SOURCE` | `<root>/Source Data` |
+| Seestar and Dwarf folders | `--source` | `GALLERY_SOURCE` | `<root>` |
 | NINA subs | `--nina` | `GALLERY_NINA` | `<root>/NINA` |
 | NINA rejects | | `GALLERY_NINA_REJECT` | `<root>/SirilWork/PI/nina_reject.json`, else `<root>/NINA/nina_reject.json` |
 | inventory.json | `--inventory`, `--no-inventory` | `GALLERY_INVENTORY` (`none` = scan) | `<root>/Gallery/inventory.json` if it exists |
@@ -75,11 +76,11 @@ Paths are set by flag or environment variable; the builder container uses the va
   `goal_h` is the depth goal. `show: false` hides the target. Every field set wins; the rest is
   automatic. `python3 autopicks.py --root <share> --slim` prints it with the automatic fields left out.
 - Sessions: `inventory.py` (a port of `SirilWork/PI/py/inventory.py` that takes the folders as
-  arguments) scans `Source Data/` and `NINA/` on every build: Seestar `Stacked_*.fit` names, NINA
+  arguments) scans `Seestar S30 Pro/`, `Dwarf 3/` and `NINA/` on every build: Seestar `Stacked_*.fit` names, NINA
   subs (FITS headers, minus the reject list) and Dwarf `shotsInfo.json`. Sessions with 0 stacked
   frames are left out of the tables and totals. If `Gallery/inventory.json` exists it is used
   instead (an empty one is refused); delete it to go back to scanning. With neither, the site is
-  built without hours, goal bars or session tables. `python3 inventory.py "<root>/Source Data"`
+  built without hours, goal bars or session tables. `python3 inventory.py <root>`
   prints what the scan finds.
 - `Finished/*.jpg`. TIFs are never published.
 
@@ -118,16 +119,54 @@ That starts two containers:
 
 - `astrogallery-builder`: built from `app/`, mounts the telescopes share read-only at `/data` and
   writes `site/`. `ssh root@192.168.1.3 docker logs -f astrogallery-builder` shows each build.
-- `astrogallery`: `nginx:alpine` serving `site/` read-only on port 8088. It also joins the
-  `proxynet` bridge, and Nginx Proxy Manager forwards `https://astro.home.vandekieft.net` ->
-  `astrogallery:80` (LAN only; NPM sits on br0 and can't reach `192.168.1.3:8088` itself).
+- `astrogallery`: `nginx:alpine` serving `site/` read-only. It has its own LAN address on br0,
+  192.168.1.7, and Nginx Proxy Manager forwards `https://astro.home.vandekieft.net` ->
+  `192.168.1.7:80` (LAN only). NPM sits on br0 and can't reach the host IP, and since the container
+  is on br0, `192.168.1.3:8088` no longer answers other LAN machines either; use the domain or .7.
+
+If `tunnel.env` exists next to the compose file on boris, `deploy.sh` also starts the Cloudflare
+Tunnel connector from `deploy/docker-compose.tunnel.yml`; if `stats.env` exists, the traffic stats
+(Telegraf + Cloudflare exporter into InfluxDB on escher, Grafana dashboard in `deploy/grafana/`) from
+`deploy/docker-compose.stats.yml`. Both in [deploy/PUBLISH.md](deploy/PUBLISH.md). nginx always writes
+a JSON access log (no visitor addresses) to `./logs`, one file a month.
 
 Rerun `make deploy` only when the code changes. Override the target with
 `make deploy BORIS=user@host APPDATA=/path GALLERY_ROOT=/mnt/user/<share>`.
 
+## Facing the internet
+
+[deploy/PUBLISH.md](deploy/PUBLISH.md) is the step-by-step for putting the site on a public
+name (Cloudflare Tunnel, or a port-forward to NPM), with the checks to run from outside.
+
+The site is static, has no JavaScript and is served read-only, so what is published is the
+only thing to protect. What this repo does for that:
+
+- `full/` copies are the Finished JPG with its metadata stripped (`strip_metadata` in gallery.py):
+  Exif, XMP, IPTC and comments go; picture data, ICC profile and orientation stay. A JPG exported
+  with a GPS tag or a camera serial in it does not publish them. The web derivatives never had any.
+- `deploy/nginx.conf`: no version string, `.manifest.json` and `*.tmp` are 404, `status.html`
+  (share paths in warnings, builder log after a failed build) is only served to addresses on the
+  home network, `full/` downloads are limited to two at a time per address at 2 MB/s after the first MB (and
+  robots.txt asks crawlers to skip them), and a
+  Content-Security-Policy allows nothing to run. The
+  client address is taken from `X-Forwarded-For` when the request came through a proxy on a
+  private network (NPM, a tunnel connector).
+- `deploy/docker-compose.yml`: the nginx container is read-only and cannot gain privileges.
+
+What is not in this repo and has to be right on the network side:
+
+- Expose only this site. Forwarding a port to Nginx Proxy Manager exposes every host NPM knows,
+  by name; the `*.home.vandekieft.net` certificate covers them all. Prefer a tunnel that
+  publishes one hostname (Cloudflare Tunnel, `cloudflared` on proxynet pointing at
+  `http://astrogallery:80`), or put an access list on every other NPM host and never forward NPM's
+  admin port (81) or the UDM's console.
+- Cloudflare's free certificate covers `vandekieft.net` and `*.vandekieft.net` only, so a proxied
+  or tunnelled `astro.home.vandekieft.net` fails TLS. The public name is `bortle9.space` (its own
+  zone, same Cloudflare account); `astro.home.` stays for the LAN.
+
 ## Rebuild loop
 
 After a processing session: copy the JPG into `Finished/` on the share. New capture data in
-`Source Data/` and `NINA/` is counted automatically. The builder does the rest. Edit
+`Seestar S30 Pro/`, `Dwarf 3/` and `NINA/` is counted automatically. The builder does the rest. Edit
 `Gallery/picks.yaml` only to correct an automatic choice; a pinned `natural`/`hoo` there stops
 that target from updating by itself.

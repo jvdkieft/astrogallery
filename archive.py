@@ -4,7 +4,9 @@
     python3 archive.py [--dry-run] [--ssd /Volumes/scopessd] [--boris root@192.168.1.3]
                        [--share /mnt/user/Telescopes]
 
-Copies Source Data/, NINA/, Finished/ and SirilWork/PI/nina_reject.json. A file is copied when
+Copies Seestar S30 Pro/, Dwarf 3/, NINA/, Finished/ and SirilWork/PI/nina_reject.json, which
+the SSD keeps at its root like the share does (no Source Data/ folder since 21 Oct 2026; an SSD
+that still has one is refused rather than copied into the old layout). A file is copied when
 the share does not have it, or has it empty, or has it with a different size and an older
 modification time (a copy that was cut short, or an image re-exported on the SSD). A share copy
 that differs but is newer is left alone and listed, so an edit made on the share is never
@@ -22,7 +24,9 @@ import subprocess
 import sys
 import tempfile
 
-PATHS = ["Source Data", "NINA", "Finished", "SirilWork/PI/nina_reject.json"]
+PATHS = ["Seestar S30 Pro", "Dwarf 3", "NINA", "Finished", "SirilWork/PI/nina_reject.json"]
+# folders broken down one level deeper in the summary
+DEEP = ("Seestar S30 Pro", "Dwarf 3", "NINA")
 SKIP = (".DS_Store",)
 
 
@@ -70,8 +74,13 @@ def main():
     ap.add_argument("--boris", default=os.environ.get("BORIS", "root@192.168.1.3"))
     ap.add_argument("--share", default=os.environ.get("GALLERY_ROOT", "/mnt/user/Telescopes"))
     a = ap.parse_args()
-    if not os.path.isdir(os.path.join(a.ssd, "Source Data")):
-        sys.exit(f"{a.ssd} is not mounted (no Source Data folder)")
+    if not os.path.isdir(a.ssd):
+        sys.exit(f"{a.ssd} is not mounted")
+    if os.path.isdir(os.path.join(a.ssd, "Source Data")):
+        sys.exit(f"{a.ssd} still has a Source Data folder; move Seestar S30 Pro/ and Dwarf 3/ "
+                 "out of it to the SSD root first, as on the share")
+    if not any(os.path.isdir(os.path.join(a.ssd, p)) for p in PATHS[:3]):
+        sys.exit(f"{a.ssd} has no Seestar S30 Pro, Dwarf 3 or NINA folder")
 
     print(f"comparing {a.ssd} with {a.boris}:{a.share} ...", file=sys.stderr)
     mine, theirs = local_files(a.ssd), remote_files(a.boris, a.share)
@@ -85,7 +94,7 @@ def main():
     by_top = {}
     for p in todo:
         parts = p.split("/")
-        top = "/".join(parts[:2]) if parts[0] in ("Source Data", "NINA") and len(parts) > 2 else parts[0]
+        top = "/".join(parts[:2]) if parts[0] in DEEP and len(parts) > 2 else parts[0]
         n, s = by_top.get(top, (0, 0))
         by_top[top] = (n + 1, s + mine[p][0])
     total = sum(mine[p][0] for p in todo)
@@ -103,12 +112,12 @@ def main():
     if a.dry_run or not todo:
         return
 
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as lst:
-        lst.write("\n".join(todo) + "\n")
+    with tempfile.NamedTemporaryFile("wb", suffix=".txt", delete=False) as lst:
+        lst.write(b"\0".join(os.fsencode(p) for p in todo) + b"\0")  # NUL-separated: any file name goes
     try:
         # -rlt: no owner/group/permissions from the Mac; --files-from keeps the relative paths
-        rc = subprocess.run(["rsync", "-rlt", "--partial", "--progress", f"--files-from={lst.name}",
-                             a.ssd + "/", f"{a.boris}:{a.share}/"]).returncode
+        rc = subprocess.run(["rsync", "-rlt", "--partial", "--progress", "--from0", f"--files-from={lst.name}",
+                             a.ssd + "/", f"{a.boris}:{shlex.quote(a.share)}/"]).returncode
     finally:
         os.unlink(lst.name)
     # Unraid ownership for what was just copied, and for folders root created on the way
@@ -116,8 +125,8 @@ def main():
     script = ("cd {share} && while IFS= read -r -d '' p; do "
               "[ -e \"$p\" ] && [ \"$(stat -c %U \"$p\")\" = root ] && chown nobody:users \"$p\" && "
               "{{ [ -d \"$p\" ] && chmod 777 \"$p\" || chmod 666 \"$p\"; }}; done").format(share=shlex.quote(a.share))
-    payload = "\0".join(todo + dirs) + "\0"
-    subprocess.run(["ssh", "-o", "BatchMode=yes", a.boris, script], input=payload.encode(), check=False)
+    payload = b"\0".join(os.fsencode(p) for p in todo + dirs) + b"\0"
+    subprocess.run(["ssh", "-o", "BatchMode=yes", a.boris, script], input=payload, check=False)
     if rc:
         sys.exit(f"rsync exited {rc}; run it again to finish (it only copies what is still missing)")
     print("done; run again with --dry-run to check: it should say 0 files")

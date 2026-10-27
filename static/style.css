@@ -28,8 +28,9 @@ h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; color: var(--muted); letter-spac
 .sub { margin: 0 0 1rem; }
 .site-footer { color: var(--muted); font-size: .8rem; padding-top: 2rem; padding-bottom: 2rem; }
 
-/* kind filter chips (CSS :has; without it every group simply stays visible) */
-.filters { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 0; }
+/* kind filter chips (CSS :has; without it the chips are hidden and every group stays visible) */
+.filters { display: none; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 0; }
+@supports selector(body:has(a)) { .filters { display: flex; } }
 .filters label, .toggle label {
   border: 1px solid var(--line); border-radius: 999px; padding: .3rem .8rem; cursor: pointer;
   color: var(--muted); background: var(--panel); user-select: none; font-size: .9rem;
@@ -37,9 +38,12 @@ h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; color: var(--muted); letter-spac
 .filters input:checked + label, .r-hoo:checked ~ .toggle .l-hoo, .r-nat:checked ~ .toggle .l-nat {
   color: var(--bg); background: var(--accent); border-color: var(--accent);
 }
-.filters input:focus-visible + label, .r-hoo:focus-visible ~ .toggle .l-hoo, .r-nat:focus-visible ~ .toggle .l-nat {
+.filters input:focus + label, .r-hoo:focus ~ .toggle .l-hoo, .r-nat:focus ~ .toggle .l-nat {
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
+/* ...but only for the keyboard where the browser can tell (the rule is dropped where it can't) */
+.filters input:focus:not(:focus-visible) + label, .r-hoo:focus:not(:focus-visible) ~ .toggle .l-hoo,
+.r-nat:focus:not(:focus-visible) ~ .toggle .l-nat { outline: 0; }
 
 /* grid of cards */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
@@ -57,6 +61,8 @@ h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; color: var(--muted); letter-spac
   display: inline-block; margin-left: .4rem; padding: 0 .4rem; border: 1px solid var(--line);
   border-radius: 4px; font-size: .72rem; vertical-align: 1px;
 }
+.badge.new { color: var(--bg); background: var(--done); border-color: var(--done); font-weight: 600; }
+.card .meta.updated { color: var(--text); }
 
 /* depth bar */
 .depth { display: flex; align-items: center; gap: .6rem; font-size: .82rem; }
@@ -76,7 +82,7 @@ h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; color: var(--muted); letter-spac
 .frames > figure { display: none; }
 .r-hoo:checked ~ .frames > .f-hoo, .r-nat:checked ~ .frames > .f-nat { display: block; }
 figure { margin: 0; }
-.viewer img { display: block; width: 100%; height: auto; max-height: 85vh; object-fit: contain; background: #000; border-radius: 6px; }
+.viewer img { display: block; width: auto; max-width: 100%; height: auto; max-height: 85vh; margin: 0 auto; border-radius: 6px; }
 figcaption { display: flex; justify-content: space-between; gap: .5rem 1rem; flex-wrap: wrap; font-size: .8rem; margin-top: .35rem; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .75rem 1.5rem; margin: 1.5rem 0 0; }
 .facts dt { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
@@ -98,6 +104,7 @@ table.sessions { border-collapse: collapse; width: 100%; font-size: .9rem; font-
   .grid { gap: 10px; }
   .card-body { padding: .5rem .6rem .65rem; }
   .card .meta { display: none; }
+  .card .meta.updated { display: block; }
   .depth .bar { flex-basis: 50px; }
   .sessions .short { display: inline; }
   .sessions.one-filter .flt { display: none; }  /* the one filter is listed above the table */
