@@ -540,7 +540,7 @@ def page(title, body, generated, css="style.css", extra_head=""):
 {extra_head}</head>
 <body>
 {body}
-<footer class="site-footer">Built {generated} · <a href="status.html">build status</a></footer>
+<footer class="site-footer">Built {generated} · <a href="about.html">How these are made</a> · <a href="status.html">build status</a></footer>
 </body>
 </html>
 """
@@ -601,6 +601,7 @@ def index_html(targets, images, generated, today):
     body = f"""<header class="site-header">
   <h1>Deep sky from a Bortle 8.6 backyard</h1>
   <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3 smart telescopes, narrowband filters against the suburban glow</p>
+  <p class="sub about-link"><a href="about.html">How these are made →</a></p>
   <nav class="filters" aria-label="Filter by kind">{"".join(chips)}</nav>
 </header>
 <main>
@@ -700,6 +701,82 @@ def target_html(t, prev, nxt, images, generated):
 
 def goal_of(t):
     return f" / {t['goal']:g}" if t["goal"] else ""
+
+
+def about_html(targets, generated):
+    """about.html: how the pictures are taken, processed and published. Numbers come from this build."""
+    sessions = [x for t in targets for x in t["sessions"]]
+    hours = sum(t["hours"] for t in targets)
+    nights = len({x["night"] for x in sessions})
+    frames = sum(int(x.get("frames") or 0) for x in sessions)
+    exps = sorted({float(x["exp"]) for x in sessions if x.get("exp")})
+    exp = (f"{exps[0]:g} to {exps[-1]:g} seconds" if len(exps) > 1 else f"{exps[0]:g} seconds") if exps else "a few seconds"
+    hoo = sum(1 for t in targets if t.get("hoo"))
+    stats = (f"Running total: {len(targets)} targets, {hours:.0f} hours of exposure, {nights} nights "
+             f"and {frames:,} individual frames.") if sessions else ""
+    body = f"""<header class="target-header">
+  <nav class="crumbs"><a href="index.html">← Gallery</a></nav>
+  <h1>How these are made</h1>
+  <p class="kind">Two little smart scopes, one very bright sky, and a lot of late nights</p>
+</header>
+<main class="about">
+<p>Everything here was shot from a back deck in the Central Iowa suburbs, under a Bortle 8.6 sky. The Bortle
+scale runs from 1 (middle of nowhere, the Milky Way bright enough to cast shadows) to 9 (downtown).
+At 8.6 the Milky Way is gone and, on a good night, the stars overhead can be counted by eye. The
+site name rounds up, because it feels like a 9. {stats}</p>
+
+<p>Not one of these objects is visible from that yard. That's the fun part.</p>
+
+<h2>The gear</h2>
+<p>Two small all-in-one smart telescopes: a ZWO Seestar S30 Pro and a DwarfLab Dwarf 3. Camera,
+optics and mount in one box each, and both run on equatorial mounts, so they track the sky the way
+a proper mount does and the frame doesn't slowly rotate through the night. Polar-aligning on a
+wooden deck is a hobby of its own: the boards flex, and walking away from the scope at the wrong
+moment is enough to knock it off.</p>
+
+<h2>Shooting</h2>
+<ul>
+<li><strong>Lots of short frames, not one long one.</strong> Each scope takes exposures of {exp}
+all night long, and they get stacked afterwards. A plane, a satellite or a gust of wind costs a
+few frames instead of the whole night.</li>
+<li><strong>Filters are what make this possible.</strong> Streetlights and city glow cover the whole
+spectrum, but emission nebulae glow at a couple of very specific colors: hydrogen-alpha (deep red)
+and oxygen-III (teal). A dual-band filter lets just those through and throws out most of the light
+pollution. Galaxies and star clusters shine in every color, so a narrow filter would throw their
+light out too. Those are shot broadband and simply need a lot more time.</li>
+<li><strong>Some nights the Seestar is driven from a computer</strong> with N.I.N.A. instead of
+its phone app, taking raw 60-second frames. Every frame is kept, the bad ones (clouds, trailing,
+the neighbor's floodlight) get tossed, and each night is calibrated properly with darks and
+flats.</li>
+</ul>
+
+<h2>Many nights per target</h2>
+<p>One night is almost never enough under this sky. Most objects get several nights, sometimes
+weeks apart, all stacked into one image. The hours on each card are the real total that went in,
+counted straight from the capture files. The bar underneath is the goal for that kind of object:
+1.5 hours for a bright cluster, 2 for a planetary nebula, 3 for a bright nebula, 4 for a galaxy,
+5 or more for faint targets and mosaics. Past the goal, doubling the time buys only about 40% more
+signal, so that's where a target counts as done. The really big ones are mosaics: several
+overlapping fields stitched together.</p>
+
+<h2>Processing</h2>
+<ul>
+<li><strong>PixInsight does nearly all of it.</strong> The early images were done in Siril (a few
+of those are still here), and PixInsight won the side-by-side comparison. Stacking, color
+calibration, pulling out the gradient the city glow smears across every frame, then RC-Astro's
+BlurXTerminator, NoiseXTerminator and StarXTerminator to sharpen, quiet the noise and lift the
+stars off so the nebula can be worked on by itself.</li>
+<li><strong>Stretching is where the picture shows up.</strong> A raw stack looks almost black:
+the faint stuff is a tiny fraction of the brightest stars. A careful stretch brings it up without
+turning every star into a blob.</li>
+<li><strong>HOO vs Natural.</strong> Emission nebulae get two versions. Natural keeps the colors
+roughly the way the filter caught them. HOO maps hydrogen to red and oxygen to teal, which shows
+where each gas sits and how they mix. HOO is the favorite, so it opens first. {hoo} targets have
+both; the toggle above the image switches.</li>
+</ul>
+
+</main>"""
+    return page("How these are made · bortle9.space", body, generated)
 
 
 def status_html(targets, images, unnamed, generated):
@@ -837,13 +914,14 @@ def main():
     generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html (LAN only)
     day = now.strftime("%Y-%m-%d")  # the public footer: a time zone would say where the builder is
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
-    keep = {"index.html", "status.html", "style.css", ".manifest.json", "img", "full"}
+    keep = {"index.html", "about.html", "status.html", "style.css", ".manifest.json", "img", "full"}
     write(os.path.join(a.out, "index.html"), index_html(ordered, images, day, now.date()))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
         nxt = ordered[n + 1] if n + 1 < len(ordered) else None
         write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, day))
         keep.add(f"{t['id']}.html")
+    write(os.path.join(a.out, "about.html"), about_html(ordered, day))
     write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated))
     css = os.path.join(a.out, "style.css")
     shutil.copyfile(os.path.join(HERE, "static", "style.css"), css + ".tmp")

@@ -242,6 +242,7 @@ Delete `stats.env` on boris, `docker rm -f astrogallery-stats astrogallery-cfsta
 
 ## What the site still reveals (accepted)
 
-Northern-hemisphere targets, a Bortle 8.6 sky (it is in the site name), the nights the scopes were out and
-the equipment and software in the file names. No name, no location, no time zone (the public
+Northern-hemisphere targets, a Bortle 8.6 sky (it is in the site name), the region: Central Iowa
+suburbs (the about page says so), the nights the scopes were out and the equipment and software
+in the file names. No name, no town or address, no time zone (the public
 footer carries the date only; the build time with its zone is on the LAN-only status page).

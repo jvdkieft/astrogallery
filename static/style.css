@@ -123,3 +123,11 @@ table.sessions { border-collapse: collapse; width: 100%; font-size: .9rem; font-
 .status .ok { color: var(--done); }
 .status .file { color: var(--muted); white-space: normal; overflow-wrap: anywhere; }
 .status .log { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; color: var(--muted); }
+
+/* about.html: a readable column */
+.about { max-width: 46rem; }
+.about p, .about li { line-height: 1.6; }
+.about ul { padding-left: 1.2rem; }
+.about li { margin: 0 0 .7rem; }
+.about h2 { color: var(--text, inherit); margin-top: 2.2rem; }
+.about-link { margin-top: -.5rem; }
