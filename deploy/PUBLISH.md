@@ -1,0 +1,150 @@
+# Publishing the gallery on the internet
+
+How to put the site on `bortle7.com` without exposing anything else at home. Two ways are
+described; the first is the one to use.
+
+```
+visitor --HTTPS--> Cloudflare edge --tunnel (outbound from boris)--> cloudflared --> astrogallery:80
+                                                                      (both on proxynet)
+LAN:  https://astro.home.vandekieft.net --> Nginx Proxy Manager --> astrogallery:80   (unchanged)
+```
+
+What is already in place in this repo (see README "Facing the internet"): metadata-stripped
+`full/` copies, the hardened `deploy/nginx.conf` (no version string, builder files 404,
+`status.html` for private addresses only, `full/` throttled, CSP and the other headers,
+`robots.txt`), a read-only nginx container.
+
+## Before either route
+
+1. Merge the PR and `make deploy` from the Mac. The first build after it re-renders every
+   image once (`GEN_VERSION` 2); wait for `status.html` to show the new build.
+2. On the LAN check the new config is live: `curl -sI https://astro.home.vandekieft.net/ | grep -i content-security`
+   must print the CSP header, and `curl -s https://astro.home.vandekieft.net/nope | grep nginx`
+   must show `nginx` without a version.
+3. Register `bortle7.com` at Cloudflare Registrar. A **separate Cloudflare account** keeps its
+   nameserver pair apart from `vandekieft.net`'s (passive-DNS sites index zones by nameserver
+   pair; it is the one cheap link between the two names). WHOIS redaction is on by default.
+4. Keep the GitHub repo private: its README names the share, boris and the LAN hostname, and
+   the generated HTML contains strings unique enough to find the repo with code search.
+
+## Route A: Cloudflare Tunnel (recommended)
+
+No port is opened on the UDM; `cloudflared` on boris dials out to Cloudflare and only the
+hostnames you list are published. The home IP never appears in DNS.
+
+### 1. Create the tunnel
+
+Cloudflare dashboard (the bortle7.com account) → Zero Trust → Networks → Tunnels → Create a
+tunnel → Cloudflared → name it `boris`. On the next screen pick Docker and copy the **token**
+from the command shown (the long string after `--token`). Do not run that command; the
+container is added to the compose file instead.
+
+Under Public Hostname add:
+
+| Subdomain | Domain | Service |
+|---|---|---|
+| (empty) | bortle7.com | `http://astrogallery:80` |
+| www | bortle7.com | `http://astrogallery:80` |
+
+`astrogallery` resolves because the connector joins `proxynet`, the same bridge NPM uses. Do
+**not** point the service at NPM (`https://192.168.1.10`) with a Host override of
+`astro.home.vandekieft.net`: NPM would answer every public request with
+`X-Served-By: astro.home.vandekieft.net`.
+
+### 2. Add the connector to the compose file on boris
+
+In `deploy/docker-compose.yml` (then `make deploy`), or by hand in
+`/mnt/user/appdata/astrogallery/docker-compose.yml`:
+
+```yaml
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: astrogallery-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxynet
+```
+
+Put the token in `.env` next to the compose file on boris (`TUNNEL_TOKEN=eyJ...`), never in
+the repo. `deploy.sh` rewrites `.env` on every deploy with `GALLERY_ROOT` and
+`GALLERY_VERSION`, so either add `TUNNEL_TOKEN` to what it writes (read from the Mac's
+environment, e.g. `TUNNEL_TOKEN=... make deploy`) or keep the token in a second file
+(`tunnel.env`) and give the service `env_file: tunnel.env`. The second is simpler.
+
+`docker compose up -d` on boris; the tunnel shows **Healthy** in the dashboard within a
+minute. One connector is enough for a static site.
+
+### 3. Cloudflare settings for the zone
+
+- SSL/TLS → Overview: **Full** is irrelevant for a tunnel (the edge talks to the connector),
+  but set Edge Certificates → **Always Use HTTPS** on, **Minimum TLS 1.2**, **HSTS** on
+  (max-age 6 months; the origin already sends HSTS for a year, harmless twice).
+- Speed → Optimization: **turn off Rocket Loader, Email Obfuscation, Mirage and Auto Minify**
+  if any is on. They inject JavaScript into the pages, which the site's CSP (`default-src
+  'none'`) blocks; the result is console errors and, for the email obfuscator, broken text.
+- Caching → Cache Rules: one rule for `URI Path starts with /img/` and one for `/full/` →
+  Eligible for cache, Edge TTL 1 day, Browser TTL "respect origin". The origin's
+  `Cache-Control: public, max-age=86400, must-revalidate` already allows it; the rule makes
+  it certain. HTML stays uncached (`no-cache`), so a new image shows within minutes.
+- Security → WAF → Custom rules: **Block** when `URI Path starts with "/status"`. The origin
+  gates `status.html` by address, but this does not depend on the tunnel setting
+  `X-Forwarded-For` correctly.
+- Security → WAF → Rate limiting rules: `URI Path starts with "/full/"` → more than 20
+  requests per minute per IP → Block for 10 minutes. A free plan allows one such rule.
+- Security → Bots: Bot Fight Mode on. Scrape Shield → Hotlink Protection on (blocks other
+  sites embedding the images; direct links and search engines still work).
+- Leave Scrape Shield → Email Address Obfuscation off (JavaScript, see above).
+
+### 4. Check from outside (phone on mobile data, or `curl` from anywhere)
+
+```
+curl -sI https://bortle7.com/ | grep -i "content-security\|x-served-by\|server:"
+   # CSP present; no X-Served-By; Server: cloudflare
+curl -s -o /dev/null -w "%{http_code}\n" https://bortle7.com/status.html      # 403
+curl -s -o /dev/null -w "%{http_code}\n" https://bortle7.com/status           # 403
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 192.168.1.5" https://bortle7.com/status.html   # 403
+curl -s https://bortle7.com/nope | grep -o "nginx[^<]*"                       # "nginx", no version
+curl -s https://bortle7.com/robots.txt
+dig +short bortle7.com     # Cloudflare addresses (104.x / 172.67.x), never the home IP
+```
+
+On the LAN `https://astro.home.vandekieft.net/status.html` still answers 200 through NPM.
+
+### Rollback
+
+Delete the public hostname in the tunnel (or stop `astrogallery-tunnel`). The site is off
+the internet immediately; nothing else changes.
+
+## Route B: port-forward to Nginx Proxy Manager (not recommended)
+
+Works, but every host NPM knows becomes reachable by name from the internet, and the home IP
+goes public. Only if the tunnel is unwanted:
+
+1. UDM → Port Forwarding: 443 → 192.168.1.10:443 only (never 80 unless you want the
+   HTTP→HTTPS redirect handled at home, and never 81, NPM's admin UI).
+2. NPM: **Settings → Default Site → "No Response (444)"** so a request by IP gets nothing.
+   An **Access List** (LAN only: 192.168.0.0/16) on *every* other proxy host (immich, unifi,
+   tasks, ...). Add a proxy host `bortle7.com`, `www.bortle7.com` → `http://astrogallery:80`,
+   with its own Let's Encrypt certificate requested by DNS challenge (Cloudflare API token,
+   so no port 80 is needed). **Do not add bortle7.com as another name on the
+   `*.home.vandekieft.net` certificate**: certificate transparency logs would tie the two
+   names together permanently.
+3. Cloudflare DNS: `A bortle7.com → <home IP>` proxied (orange cloud), and the same for `www`.
+   SSL/TLS mode **Full (strict)**. Then UDM firewall: allow 443 only from
+   [Cloudflare's published IP ranges](https://www.cloudflare.com/ips/), so nobody can reach
+   NPM by IP and learn which certificate it serves. The home IP still changes with the ISP;
+   a dynamic-DNS updater (NPM has none; the UDM can update Cloudflare via a DDNS entry with
+   the Cloudflare provider) is needed.
+4. `X-Served-By` will say `bortle7.com` (NPM echoes the request's host), which is fine.
+5. Everything in Route A step 3 and the checks in step 4 apply unchanged.
+
+## What the site still reveals (accepted)
+
+Northern-hemisphere targets, a suburban Bortle 6–7 sky, the nights the scopes were out and
+the equipment and software in the file names. No name, no location, no time zone (the public
+footer carries the date only; the build time with its zone is on the LAN-only status page).

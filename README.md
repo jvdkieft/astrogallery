@@ -125,6 +125,9 @@ Rerun `make deploy` only when the code changes. Override the target with
 
 ## Facing the internet
 
+[deploy/PUBLISH.md](deploy/PUBLISH.md) is the step-by-step for putting the site on a public
+name (Cloudflare Tunnel, or a port-forward to NPM), with the checks to run from outside.
+
 The site is static, has no JavaScript and is served read-only, so what is published is the
 only thing to protect. What this repo does for that:
 

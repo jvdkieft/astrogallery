@@ -64,6 +64,7 @@ def _scalar(s):
 
 
 def loads(text):
+    text = text.lstrip("﻿")  # a BOM would otherwise be part of the first key
     toks = []
     for n, raw in enumerate(text.splitlines(), 1):
         line = _strip_comment(raw)
