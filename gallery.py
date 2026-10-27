@@ -772,11 +772,8 @@ toggle above each image switches between them.</li>
 <p>A finished image is exported at full resolution and dropped into a folder on a home server. The
 site rebuilds itself within a couple of minutes: it reads the file name to work out the object,
 picks the best version (most nights, newest), counts the hours from the capture data and makes the
-web-sized copies. Nothing is uploaded by hand. The "Download full resolution" link gives the
+web-sized copies. Nothing is uploaded by hand. The "Full resolution" link under each image gives the
 original export with its camera metadata removed.</p>
-<p>The site is plain HTML: no JavaScript, no cookies, no trackers, no ads. It is served from home
-through Cloudflare. Visits are counted from the server log by page and country only; no visitor
-addresses are kept. The site and its build pipeline were written with Claude Code.</p>
 </main>"""
     return page("How these are made · bortle9.space", body, generated)
 
