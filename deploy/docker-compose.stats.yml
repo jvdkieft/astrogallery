@@ -40,11 +40,14 @@ services:
       - stats.env
     environment:
       FREE_TIER: "true"
+      # The token is scoped to one zone and cannot list accounts; without the account ID the
+      # exporter finds no zones and exports nothing, silently.
+      CF_ACCOUNTS: "1af8aed3f98147f68fac56b454e7d355"
       CF_ZONES: "3fcb25fe008a40cb7666bbad075e7909"  # bortle9.space
       SCRAPE_INTERVAL: "60"  # telegraf.conf scrapes at the same cadence
       SCRAPE_DELAY: "300"
       LISTEN: ":8080"
-      LOG_LEVEL: "warn"
+      LOG_LEVEL: "info"  # logs the accounts and zones it found at startup
     read_only: true
     security_opt:
       - no-new-privileges:true

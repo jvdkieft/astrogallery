@@ -208,8 +208,9 @@ Cloudflare GraphQL --cloudflare-exporter (boris)--> Telegraf ---^
 ### Setup (once)
 
 1. Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom: permission
-   **Zone / Analytics / Read**, zone resource **Include / Specific zone / bortle9.space**.
-   Nothing else. Copy the token.
+   **Zone / Analytics / Read** (Zone / Zone / Read does no harm), zone resource **Include /
+   Specific zone / bortle9.space**. Nothing else. Copy the token. Because it cannot list accounts,
+   the exporter is given the account ID in `docker-compose.stats.yml` (`CF_ACCOUNTS`).
 2. On boris, next to the compose file:
 
    ```
