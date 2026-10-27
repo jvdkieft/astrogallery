@@ -18,15 +18,20 @@ What is already in place in this repo (see README "Facing the internet"): metada
 
 1. Merge the PR and `make deploy` from the Mac. The first build after it re-renders every
    image once (`GEN_VERSION` 2); wait for `status.html` to show the new build.
-2. On the LAN check the new config is live: `curl -sI https://astro.home.vandekieft.net/ | grep -i content-security`
+2. `docker compose up -d` recreates the nginx container when its definition changed
+   (`read_only`, `tmpfs`), which gives it a new address on `proxynet`. Nginx Proxy Manager
+   resolved the old one when it started, so `astro.home.vandekieft.net` answers **502**
+   until NPM is restarted (or the proxy host is saved again). The tunnel is not affected:
+   `cloudflared` resolves the name per request.
+3. On the LAN check the new config is live: `curl -sI https://astro.home.vandekieft.net/ | grep -i content-security`
    must print the CSP header, and `curl -s https://astro.home.vandekieft.net/nope | grep nginx`
    must show `nginx` without a version.
-3. `bortle9.space` is registered at Cloudflare Registrar, in the same account as
+4. `bortle9.space` is registered at Cloudflare Registrar, in the same account as
    `vandekieft.net` (registered 2026-10-27; both zones share the nameserver pair
    linda/archer.ns.cloudflare.com). Accepted: passive-DNS sites index zones by nameserver
    pair, so the two names can be linked that way. Nothing on the site itself links them.
    WHOIS redaction is on by default.
-4. Keep the GitHub repo private: its README names the share, boris and the LAN hostname, and
+5. Keep the GitHub repo private: its README names the share, boris and the LAN hostname, and
    the generated HTML contains strings unique enough to find the repo with code search.
 
 ## Route A: Cloudflare Tunnel (recommended)
@@ -73,7 +78,15 @@ deploy without touching it. The tunnel shows **Healthy** in the dashboard within
 one connector is enough for a static site. `ssh root@192.168.1.3 docker logs
 astrogallery-tunnel` shows the connector registering.
 
-**Already running a tunnel for something else (the Vikunja setup)?** Reuse it instead of
+**This is how it was actually done (2026-10-27):** the account already had a tunnel
+`boris` (one `cloudflared` replica on boris, a container on `proxynet`, publishing
+`mcp-tasks.vandekieft.net`). `bortle9.space` and `www.bortle9.space` were added to it as
+published applications with service `http://astrogallery:80`; the DNS CNAMEs were created
+by the dashboard. No second connector and no `tunnel.env`, so `deploy.sh` leaves the
+tunnel alone; `deploy/docker-compose.tunnel.yml` stays as the fallback if that tunnel ever
+goes away.
+
+**Already running a tunnel for something else?** Reuse it instead of
 making a second one; a tunnel can publish any number of hostnames, and `bortle9.space` is in
 the same account, so it is offered in the hostname dropdown. In that tunnel add the two
 public hostnames from step 1 and skip the connector here. The service URL depends on where
@@ -83,26 +96,36 @@ takes the visitor's address from the `X-Forwarded-For` that cloudflared sets (th
 connector's own LAN address is in the trusted range), so `status.html` stays LAN-only
 either way.
 
-### 3. Cloudflare settings for the zone
+### 3. Cloudflare settings for the zone (done 2026-10-27; here is what and why)
 
-- SSL/TLS → Overview: **Full** is irrelevant for a tunnel (the edge talks to the connector),
-  but set Edge Certificates → **Always Use HTTPS** on, **Minimum TLS 1.2**, **HSTS** on
-  (max-age 6 months; the origin already sends HSTS for a year, harmless twice).
-- Speed → Optimization: **turn off Rocket Loader, Email Obfuscation, Mirage and Auto Minify**
-  if any is on. They inject JavaScript into the pages, which the site's CSP (`default-src
-  'none'`) blocks; the result is console errors and, for the email obfuscator, broken text.
-- Caching → Cache Rules: one rule for `URI Path starts with /img/` and one for `/full/` →
-  Eligible for cache, Edge TTL 1 day, Browser TTL "respect origin". The origin's
-  `Cache-Control: public, max-age=86400, must-revalidate` already allows it; the rule makes
-  it certain. HTML stays uncached (`no-cache`), so a new image shows within minutes.
-- Security → WAF → Custom rules: **Block** when `URI Path starts with "/status"`. The origin
-  gates `status.html` by address, but this does not depend on the tunnel setting
-  `X-Forwarded-For` correctly.
-- Security → WAF → Rate limiting rules: `URI Path starts with "/full/"` → more than 20
-  requests per minute per IP → Block for 10 minutes. A free plan allows one such rule.
-- Security → Bots: Bot Fight Mode on. Scrape Shield → Hotlink Protection on (blocks other
-  sites embedding the images; direct links and search engines still work).
-- Leave Scrape Shield → Email Address Obfuscation off (JavaScript, see above).
+- SSL/TLS → Edge Certificates: **Always Use HTTPS** on (it is *off* on a new zone, so plain
+  `http://` answered 200 until it was switched), **Minimum TLS 1.2** (default was 1.0), TLS
+  1.3 on, **HSTS** on with max-age 6 months, includeSubDomains, no-sniff (the origin sends
+  HSTS for a year too; harmless twice).
+- Security → Security rules: a custom rule **"Block the builder status page"**,
+  `(starts_with(http.request.uri.path, "/status"))` → Block. The origin gates `status.html`
+  by address as well; this one does not depend on the tunnel's `X-Forwarded-For`. And a
+  rate-limiting rule **"Throttle full-resolution downloads"**,
+  `(starts_with(http.request.uri.path, "/full/"))`, more than 10 requests per 10 seconds
+  per IP → Block for 10 seconds (the free plan allows one rule, 10-second windows only).
+- Security → Settings: **Email Address Obfuscation off** (it is on by default and injects
+  JavaScript), **Hotlink Protection on** (other sites cannot embed the images; direct links
+  and search engines still work), Browser Integrity Check on (default). **Bot Fight Mode
+  stays off**: it injects an inline `<script>` into every HTML page
+  (`/cdn-cgi/challenge-platform/.../jsd/main.js`), which the site's
+  `Content-Security-Policy: default-src 'none'` blocks, so it would only produce console
+  errors and a crippled detection. The static site, the rate limit and the origin throttle
+  are the bot defence.
+- Speed → Settings: **Rocket Loader off** (default; it also injects JavaScript). Speed
+  Brain, Early Hints and Cloudflare Fonts are on by default and are header-only or a
+  no-op for a site without Google Fonts; leave them.
+- Caching: **no cache rule needed**. Cloudflare caches `.jpg` by default and honours the
+  origin's `Cache-Control: public, max-age=86400, must-revalidate`; checked from outside,
+  the second fetch of a derivative and of a `full/` copy is `cf-cache-status: HIT`. HTML
+  stays `DYNAMIC` (origin says `no-cache`), so a new image shows within minutes.
+- `robots.txt`: Cloudflare's managed robots.txt (AI Crawl Control → Content Signals) is on
+  for the zone and answers `/robots.txt` with its content-signal preamble; once the origin
+  serves its own (the hardened config), Cloudflare prepends its block to the origin's.
 
 ### 4. Check from outside (phone on mobile data, or `curl` from anywhere)
 
@@ -113,7 +136,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status.html      
 curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status           # 403
 curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 192.168.1.5" https://bortle9.space/status.html   # 403
 curl -s https://bortle9.space/nope | grep -o "nginx[^<]*"                       # "nginx", no version
-curl -s https://bortle9.space/robots.txt
+curl -s https://bortle9.space/robots.txt      # Cloudflare's content-signal block, then the origin's Disallow lines
 dig +short bortle9.space     # Cloudflare addresses (104.x / 172.67.x), never the home IP
 ```
 
