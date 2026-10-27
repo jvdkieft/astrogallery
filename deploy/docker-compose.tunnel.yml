@@ -1,4 +1,4 @@
-# Cloudflare Tunnel connector for the public name (bortle7.com). Optional: deploy.sh adds this
+# Cloudflare Tunnel connector for the public name (bortle9.space). Optional: deploy.sh adds this
 # file to `docker compose` only when $APPDATA/tunnel.env exists on boris, so a deploy without a
 # tunnel changes nothing. See deploy/PUBLISH.md.
 #

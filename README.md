@@ -154,8 +154,8 @@ What is not in this repo and has to be right on the network side:
   `http://astrogallery:80`), or put an access list on every other NPM host and never forward NPM's
   admin port (81) or the UDM's console.
 - Cloudflare's free certificate covers `vandekieft.net` and `*.vandekieft.net` only, so a proxied
-  or tunnelled `astro.home.vandekieft.net` fails TLS; use `astro.vandekieft.net` (or a paid
-  certificate) for the public name and keep `astro.home.` for the LAN.
+  or tunnelled `astro.home.vandekieft.net` fails TLS. The public name is `bortle9.space` (its own
+  zone, same Cloudflare account); `astro.home.` stays for the LAN.
 
 ## Rebuild loop
 

@@ -1,6 +1,6 @@
 # Publishing the gallery on the internet
 
-How to put the site on `bortle7.com` without exposing anything else at home. Two ways are
+How to put the site on `bortle9.space` without exposing anything else at home. Two ways are
 described; the first is the one to use.
 
 ```
@@ -21,9 +21,11 @@ What is already in place in this repo (see README "Facing the internet"): metada
 2. On the LAN check the new config is live: `curl -sI https://astro.home.vandekieft.net/ | grep -i content-security`
    must print the CSP header, and `curl -s https://astro.home.vandekieft.net/nope | grep nginx`
    must show `nginx` without a version.
-3. Register `bortle7.com` at Cloudflare Registrar. A **separate Cloudflare account** keeps its
-   nameserver pair apart from `vandekieft.net`'s (passive-DNS sites index zones by nameserver
-   pair; it is the one cheap link between the two names). WHOIS redaction is on by default.
+3. `bortle9.space` is registered at Cloudflare Registrar, in the same account as
+   `vandekieft.net` (registered 2026-10-27; both zones share the nameserver pair
+   linda/archer.ns.cloudflare.com). Accepted: passive-DNS sites index zones by nameserver
+   pair, so the two names can be linked that way. Nothing on the site itself links them.
+   WHOIS redaction is on by default.
 4. Keep the GitHub repo private: its README names the share, boris and the LAN hostname, and
    the generated HTML contains strings unique enough to find the repo with code search.
 
@@ -34,7 +36,7 @@ hostnames you list are published. The home IP never appears in DNS.
 
 ### 1. Create the tunnel
 
-Cloudflare dashboard (the bortle7.com account) → Zero Trust → Networks → Tunnels → Create a
+Cloudflare dashboard (the account that holds bortle9.space) → Zero Trust → Networks → Tunnels → Create a
 tunnel → Cloudflared → name it `boris`. On the next screen pick Docker and copy the **token**
 from the command shown (the long string after `--token`). Do not run that command; the
 container is added to the compose file instead.
@@ -43,8 +45,8 @@ Under Public Hostname add:
 
 | Subdomain | Domain | Service |
 |---|---|---|
-| (empty) | bortle7.com | `http://astrogallery:80` |
-| www | bortle7.com | `http://astrogallery:80` |
+| (empty) | bortle9.space | `http://astrogallery:80` |
+| www | bortle9.space | `http://astrogallery:80` |
 
 `astrogallery` resolves because the connector joins `proxynet`, the same bridge NPM uses. Do
 **not** point the service at NPM (`https://192.168.1.10`) with a Host override of
@@ -72,15 +74,14 @@ one connector is enough for a static site. `ssh root@192.168.1.3 docker logs
 astrogallery-tunnel` shows the connector registering.
 
 **Already running a tunnel for something else (the Vikunja setup)?** Reuse it instead of
-making a second one; a tunnel can publish any number of hostnames. In that tunnel add the
-two public hostnames from step 1 and skip the connector here. The service URL depends on
-where that connector runs: `http://astrogallery:80` if it is a container on `proxynet` on
-boris, `http://192.168.1.3:8088` from anywhere else on the LAN. Both reach the same nginx, and
-nginx takes the visitor's address from the `X-Forwarded-For` that cloudflared sets (the
+making a second one; a tunnel can publish any number of hostnames, and `bortle9.space` is in
+the same account, so it is offered in the hostname dropdown. In that tunnel add the two
+public hostnames from step 1 and skip the connector here. The service URL depends on where
+that connector runs: `http://astrogallery:80` if it is a container on `proxynet` on boris,
+`http://192.168.1.3:8088` from anywhere else on the LAN. Both reach the same nginx, and nginx
+takes the visitor's address from the `X-Forwarded-For` that cloudflared sets (the
 connector's own LAN address is in the trusted range), so `status.html` stays LAN-only
-either way. If that tunnel lives in the vandekieft.net account, bortle7.com has to be a zone
-in the same account for the hostname to be offered, which gives up the separate-account
-split from "Before either route" step 3; a second tunnel in the bortle7.com account keeps it.
+either way.
 
 ### 3. Cloudflare settings for the zone
 
@@ -106,14 +107,14 @@ split from "Before either route" step 3; a second tunnel in the bortle7.com acco
 ### 4. Check from outside (phone on mobile data, or `curl` from anywhere)
 
 ```
-curl -sI https://bortle7.com/ | grep -i "content-security\|x-served-by\|server:"
+curl -sI https://bortle9.space/ | grep -i "content-security\|x-served-by\|server:"
    # CSP present; no X-Served-By; Server: cloudflare
-curl -s -o /dev/null -w "%{http_code}\n" https://bortle7.com/status.html      # 403
-curl -s -o /dev/null -w "%{http_code}\n" https://bortle7.com/status           # 403
-curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 192.168.1.5" https://bortle7.com/status.html   # 403
-curl -s https://bortle7.com/nope | grep -o "nginx[^<]*"                       # "nginx", no version
-curl -s https://bortle7.com/robots.txt
-dig +short bortle7.com     # Cloudflare addresses (104.x / 172.67.x), never the home IP
+curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status.html      # 403
+curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status           # 403
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 192.168.1.5" https://bortle9.space/status.html   # 403
+curl -s https://bortle9.space/nope | grep -o "nginx[^<]*"                       # "nginx", no version
+curl -s https://bortle9.space/robots.txt
+dig +short bortle9.space     # Cloudflare addresses (104.x / 172.67.x), never the home IP
 ```
 
 On the LAN `https://astro.home.vandekieft.net/status.html` still answers 200 through NPM.
@@ -133,18 +134,18 @@ goes public. Only if the tunnel is unwanted:
    HTTP→HTTPS redirect handled at home, and never 81, NPM's admin UI).
 2. NPM: **Settings → Default Site → "No Response (444)"** so a request by IP gets nothing.
    An **Access List** (LAN only: 192.168.0.0/16) on *every* other proxy host (immich, unifi,
-   tasks, ...). Add a proxy host `bortle7.com`, `www.bortle7.com` → `http://astrogallery:80`,
+   tasks, ...). Add a proxy host `bortle9.space`, `www.bortle9.space` → `http://astrogallery:80`,
    with its own Let's Encrypt certificate requested by DNS challenge (Cloudflare API token,
-   so no port 80 is needed). **Do not add bortle7.com as another name on the
+   so no port 80 is needed). **Do not add bortle9.space as another name on the
    `*.home.vandekieft.net` certificate**: certificate transparency logs would tie the two
    names together permanently.
-3. Cloudflare DNS: `A bortle7.com → <home IP>` proxied (orange cloud), and the same for `www`.
+3. Cloudflare DNS: `A bortle9.space → <home IP>` proxied (orange cloud), and the same for `www`.
    SSL/TLS mode **Full (strict)**. Then UDM firewall: allow 443 only from
    [Cloudflare's published IP ranges](https://www.cloudflare.com/ips/), so nobody can reach
    NPM by IP and learn which certificate it serves. The home IP still changes with the ISP;
    a dynamic-DNS updater (NPM has none; the UDM can update Cloudflare via a DDNS entry with
    the Cloudflare provider) is needed.
-4. `X-Served-By` will say `bortle7.com` (NPM echoes the request's host), which is fine.
+4. `X-Served-By` will say `bortle9.space` (NPM echoes the request's host), which is fine.
 5. Everything in Route A step 3 and the checks in step 4 apply unchanged.
 
 ## What the site still reveals (accepted)
