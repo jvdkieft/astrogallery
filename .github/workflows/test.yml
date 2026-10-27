@@ -10,3 +10,5 @@ jobs:
           python-version: "3.12"  # what the builder image runs
       - run: pip install pillow
       - run: make test
+      # the nginx config as the container on boris will load it
+      - run: docker run --rm -v "$PWD/deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro" nginx:alpine nginx -t

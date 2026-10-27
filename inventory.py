@@ -122,13 +122,27 @@ def load_reject(path):
         return set()
 
 
+PROBLEMS = []  # inputs scan() could not read; gallery.py shows them on status.html
+
+
+def problem(msg):
+    PROBLEMS.append(msg)
+    print(f"warning: {msg}", file=sys.stderr)
+
+
 def fits_card(hdr, key, default=""):
-    """Value of a FITS header card, quotes and comment stripped."""
+    """Value of a FITS header card, quotes and comment stripped (a quoted value may hold a /)."""
     k = f"{key:<8}="
     for i in range(0, len(hdr) - 79, 80):
         card = hdr[i:i + 80]
         if card.startswith(k):
-            return card[9:].split("/")[0].strip().strip("'").strip()
+            v = card[9:].strip()
+            if v.startswith("'"):
+                end = v.find("'", 1)
+                while end != -1 and v[end + 1:end + 2] == "'":  # '' is an escaped quote
+                    end = v.find("'", end + 2)
+                return (v[1:end] if end != -1 else v[1:]).replace("''", "'").strip()
+            return v.split("/")[0].strip()
         if card.startswith("END     "):
             break
     return default
@@ -184,8 +198,12 @@ def scan(src, nina=None, reject=None):
             m = SEESTAR_RE.match(os.path.basename(f))
             if not m:
                 continue
-            n, name, exp, flt = int(m[1]), m[2], float(m[3]), m[4]
-            ts = dt.datetime.strptime(m[5], "%Y%m%d-%H%M%S")
+            try:
+                n, name, exp, flt = int(m[1]), m[2], float(m[3]), m[4]
+                ts = dt.datetime.strptime(m[5], "%Y%m%d-%H%M%S")
+            except ValueError as e:
+                problem(f"skipped {os.path.basename(f)}: {e}")
+                continue
             k = (evening(ts), flt, exp)
             pre = "mosaic_" if name.startswith("mosaic_") else ""
             if name[len(pre):].startswith(("HIP ", "HD ", "TYC ", "SAO ")):
@@ -214,14 +232,17 @@ def scan(src, nina=None, reject=None):
                 s = json.load(fh)
         except Exception:
             continue
-        ts = dt.datetime.strptime(m[1], "%Y-%m-%d-%H-%M-%S")
-        tgt = s.get("target") or os.path.basename(d)
-        if tgt in ("Manual", "Unknown") and s.get("RA") is not None:
-            n = nearest(float(s["RA"]), float(s["DEC"]))
-            tgt = ("M 52" if n in ("M 52", "NGC 7635") else n) if n else tgt
-        out.append(dict(scope="D3", folder=os.path.basename(d), target=tgt, night=evening(ts),
-                        filter=s.get("ir"), exp=fexp(s.get("exp", 0)), frames=int(s.get("shotsStacked", 0)),
-                        taken=s.get("shotsTaken"), mosaic="mosaicInfo" in s, wide="WIDE" in d))
+        try:  # one odd shotsInfo.json must not stop every build
+            ts = dt.datetime.strptime(m[1], "%Y-%m-%d-%H-%M-%S")
+            tgt = str(s.get("target") or os.path.basename(d))
+            if tgt in ("Manual", "Unknown") and s.get("RA") is not None:
+                n = nearest(float(s["RA"]), float(s["DEC"]))
+                tgt = ("M 52" if n in ("M 52", "NGC 7635") else n) if n else tgt
+            out.append(dict(scope="D3", folder=os.path.basename(d), target=tgt, night=evening(ts),
+                            filter=s.get("ir"), exp=fexp(s.get("exp", 0)), frames=int(s.get("shotsStacked") or 0),
+                            taken=s.get("shotsTaken"), mosaic="mosaicInfo" in s, wide="WIDE" in d))
+        except (ValueError, TypeError, KeyError, ZeroDivisionError, AttributeError) as e:
+            problem(f"skipped {j}: {e}")
     seen = set()
     out = [o for o in out if not (o.get("file") and (o["file"] in seen or seen.add(o["file"])))]
     for o in out:

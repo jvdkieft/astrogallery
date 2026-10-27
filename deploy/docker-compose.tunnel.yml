@@ -1,0 +1,20 @@
+# Cloudflare Tunnel connector for the public name (bortle9.space). Optional: deploy.sh adds this
+# file to `docker compose` only when $APPDATA/tunnel.env exists on boris, so a deploy without a
+# tunnel changes nothing. See deploy/PUBLISH.md.
+#
+# tunnel.env holds one line, TUNNEL_TOKEN=<token from the Cloudflare dashboard>, and is never in
+# the repo. The connector joins proxynet so the public hostname's service can be
+# http://astrogallery:80 by container name, the same path NPM uses.
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: astrogallery-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    env_file:
+      - tunnel.env
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - proxynet
