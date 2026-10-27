@@ -43,6 +43,7 @@ CATALOGUE = {
     "IC 1848": dict(name="IC 1848 Soul Nebula", kind="emission nebula", parent="IC 1805"),
     "VEIL": dict(id="veil", name="Veil Nebula complex", kind="supernova remnant", aliases=["NGC 6960"]),
     "C 33": dict(id="c33", name="C 33 Eastern Veil", kind="supernova remnant", aliases=["NGC 6992", "NGC 6995"]),
+    "NGC 6960": dict(id="ngc6960", name="NGC 6960 Western Veil", kind="supernova remnant"),
     "M 31": dict(id="m31", name="M31 Andromeda Galaxy", kind="galaxy"),
     "M 51": dict(id="m51", name="M51 Whirlpool Galaxy", kind="galaxy"),
     "M 33": dict(id="m33", name="M33 Triangulum Galaxy", kind="galaxy"),
@@ -196,6 +197,10 @@ def auto_targets(files, sessions=None):
         tooled = [p for p in ps if p["tool"]]
         groups[k] = tooled or [dict(p, untooled=True) for p in ps]
     session_keys = sorted({f"{s['scope']}|{s['target']}" for s in sessions or [] if s.get("frames", 0) > 0})
+    # scopes of every target published on its own: a session of that target and scope is its own,
+    # not another target's that lists it as an alias (D3|NGC 6960 is the Western Veil, not the Veil)
+    own_scopes = {k: {s for p in ps for s in p["scope"].split("+")} for k, ps in groups.items()
+                  if CATALOGUE.get(k, {}).get("parent") not in groups and not all(p.get("untooled") for p in ps)}
 
     out = {}
     for k, ps in groups.items():
@@ -227,9 +232,12 @@ def auto_targets(files, sessions=None):
         for c in children:
             ids |= set(CATALOGUE[c].get("aliases", []))
         scopes = {s for p in own + inset_ps for s in p["scope"].split("+")}
-        sess = [sk for sk in session_keys
-                if sk.split("|")[0] in scopes and key_of(sk.split("|", 1)[1]) in ids
-                and "solar system" not in kind]  # no depth to track for the Moon and Sun
+        sess = []
+        for sk in session_keys:
+            scope, sk_key = sk.split("|")[0], key_of(sk.split("|", 1)[1])
+            if (scope in scopes and sk_key in ids and "solar system" not in kind  # no depth for the Moon and Sun
+                    and not (sk_key != k and scope in own_scopes.get(sk_key, ()))):
+                sess.append(sk)
         e = dict(id=cat.get("id") or re.sub(r"[^a-z0-9]+", "", k.lower()) or "target",
                  name=cat.get("name") or main["label"], kind=kind,
                  goal_h=next((g for w, g in GOALS if w in kind), None),
@@ -497,6 +505,12 @@ def selftest():
           (["D3|C 20"], ["S30P|NGC 7000", "S30P|mosaic_NGC 7000"]))
     check("ngc7380 merged", a["NGC 7380"]["natural"], "NGC 7380 D3 Siril hand v2 20260713.jpg")
     check("veil", (a["VEIL"]["id"], a["VEIL"]["kind"]), ("veil", "supernova remnant, mosaic"))
+    w = auto_targets(FIXTURES + ["NGC 6960 Western Veil D3 PixInsight 20261012+1016.jpg"],
+                     FIXTURE_SESSIONS + [dict(scope="D3", target="NGC 6960", frames=1),
+                                         dict(scope="S30P", target="mosaic_NGC 6960", frames=1)])
+    check("western veil", (w["NGC 6960"]["id"], w["NGC 6960"]["kind"], w["NGC 6960"]["goal_h"],
+                           w["NGC 6960"]["sessions"]), ("ngc6960", "supernova remnant", 3, ["D3|NGC 6960"]))
+    check("veil leaves the western veil's sessions", w["VEIL"]["sessions"], ["S30P|mosaic_NGC 6960"])
     check("double cluster", (a["NGC 869"]["id"], a["NGC 869"]["goal_h"], a["NGC 869"]["alt"]),
           ("double-cluster", 1.5, []))
     check("moon", (a["MOON"]["natural"], a["MOON"]["goal_h"], a["MOON"]["sessions"]),
