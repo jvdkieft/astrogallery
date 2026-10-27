@@ -133,7 +133,8 @@ only thing to protect. What this repo does for that:
   with a GPS tag or a camera serial in it does not publish them. The web derivatives never had any.
 - `deploy/nginx.conf`: no version string, `.manifest.json` and `*.tmp` are 404, `status.html`
   (share paths in warnings, builder log after a failed build) is only served to addresses on the
-  home network, `full/` downloads are limited to two at a time per address at 4 MB/s, and a
+  home network, `full/` downloads are limited to two at a time per address at 2 MB/s after the first MB (and
+  robots.txt asks crawlers to skip them), and a
   Content-Security-Policy allows nothing to run. The
   client address is taken from `X-Forwarded-For` when the request came through a proxy on a
   private network (NPM, a tunnel connector).
