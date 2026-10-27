@@ -18,11 +18,11 @@ What is already in place in this repo (see README "Facing the internet"): metada
 
 1. Merge the PR and `make deploy` from the Mac. The first build after it re-renders every
    image once (`GEN_VERSION` 2); wait for `status.html` to show the new build.
-2. `docker compose up -d` recreates the nginx container when its definition changed
-   (`read_only`, `tmpfs`), which gives it a new address on `proxynet`. Nginx Proxy Manager
-   resolved the old one when it started, so `astro.home.vandekieft.net` answers **502**
-   until NPM is restarted (or the proxy host is saved again). The tunnel is not affected:
-   `cloudflared` resolves the name per request.
+2. Nginx Proxy Manager forwards `astro.home.vandekieft.net` to the container's own LAN address,
+   `192.168.1.7` on `br0` (docker-compose.yml). A deploy from a checkout without that network
+   (anything before the share-layout merge) drops the address and NPM answers **502**; that is
+   what happened on 2026-10-27. Deploying from `main` puts it back. The tunnel is not affected:
+   it reaches the container by name on `proxynet`.
 3. On the LAN check the new config is live: `curl -sI https://astro.home.vandekieft.net/ | grep -i content-security`
    must print the CSP header, and `curl -s https://astro.home.vandekieft.net/nope | grep nginx`
    must show `nginx` without a version.
