@@ -14,7 +14,8 @@ rsync -aR --delete gallery.py autopicks.py inventory.py minyaml.py watch.py Dock
 rsync -c deploy/nginx.conf deploy/docker-compose.yml deploy/docker-compose.tunnel.yml deploy/docker-compose.stats.yml deploy/telegraf.conf "$BORIS:$APPDATA/"
 # With a tunnel.env on boris the Cloudflare Tunnel connector (docker-compose.tunnel.yml) is started
 # too, with a stats.env the traffic stats (docker-compose.stats.yml); see deploy/PUBLISH.md. Without
-# them nothing about those is touched.
+# them nothing about those is touched. nginx and Telegraf are restarted on every deploy because their
+# config files are bind-mounted: compose does not notice a changed file, and they only read it at start.
 VERSION=$(git describe --always --dirty 2>/dev/null || echo unknown)
-ssh "$BORIS" "printf 'GALLERY_ROOT=%s\nGALLERY_VERSION=%s\n' '$GALLERY_ROOT' '$VERSION' > '$APPDATA/.env' && cd '$APPDATA' && cf=docker-compose.yml; if [ -f tunnel.env ]; then cf=\$cf:docker-compose.tunnel.yml; echo 'tunnel.env found: starting the Cloudflare Tunnel connector too'; fi; if [ -f stats.env ]; then cf=\$cf:docker-compose.stats.yml; echo 'stats.env found: starting the traffic stats (Telegraf + Cloudflare exporter) too'; fi; export COMPOSE_FILE=\$cf && docker compose up -d --build && docker restart astrogallery >/dev/null"
+ssh "$BORIS" "printf 'GALLERY_ROOT=%s\nGALLERY_VERSION=%s\n' '$GALLERY_ROOT' '$VERSION' > '$APPDATA/.env' && cd '$APPDATA' && cf=docker-compose.yml; if [ -f tunnel.env ]; then cf=\$cf:docker-compose.tunnel.yml; echo 'tunnel.env found: starting the Cloudflare Tunnel connector too'; fi; if [ -f stats.env ]; then cf=\$cf:docker-compose.stats.yml; echo 'stats.env found: starting the traffic stats (Telegraf + Cloudflare exporter) too'; fi; export COMPOSE_FILE=\$cf && docker compose up -d --build && docker restart astrogallery >/dev/null && if [ -f stats.env ]; then docker restart astrogallery-stats >/dev/null; fi"
 echo "deployed to $BORIS:$APPDATA; builder log: ssh $BORIS docker logs -f astrogallery-builder"
