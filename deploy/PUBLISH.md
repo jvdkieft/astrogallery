@@ -176,6 +176,6 @@ goes public. Only if the tunnel is unwanted:
 
 ## What the site still reveals (accepted)
 
-Northern-hemisphere targets, a suburban Bortle 6–7 sky, the nights the scopes were out and
+Northern-hemisphere targets, a Bortle 8.6 sky (it is in the site name), the nights the scopes were out and
 the equipment and software in the file names. No name, no location, no time zone (the public
 footer carries the date only; the build time with its zone is on the LAN-only status page).

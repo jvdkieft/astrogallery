@@ -598,7 +598,7 @@ def index_html(targets, images, generated, today):
     total = sum(t["hours"] for t in targets)
     body = f"""<header class="site-header">
   <h1>Astro gallery</h1>
-  <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3, Bortle 6–7</p>
+  <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3, Bortle 8.6</p>
   <nav class="filters" aria-label="Filter by kind">{"".join(chips)}</nav>
 </header>
 <main>
