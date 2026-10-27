@@ -5,9 +5,9 @@
 #   INFLUX_URL=http://192.168.1.4:8086      InfluxDB 1.8 on escher; database "astrogallery"
 #   CF_API_TOKEN=...                        Cloudflare token, Zone / Analytics:Read on bortle9.space only
 #
-# astrogallery-stats (Telegraf) tails the JSON access log nginx writes to ./logs and scrapes the
-# Cloudflare exporter every 5 minutes; both go to InfluxDB, where the Grafana dashboard in
-# deploy/grafana/ reads them.
+# astrogallery-stats (Telegraf) tails the JSON access log nginx writes to ./logs;
+# astrogallery-cfstats (deploy/cfstats.py) writes Cloudflare's hourly zone totals every 15 minutes.
+# Both go to InfluxDB, where the Grafana dashboard in deploy/grafana/ reads them.
 services:
   astrogallery-stats:
     image: telegraf:1.40-alpine
@@ -29,25 +29,19 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
-    depends_on:
-      - astrogallery-cf-exporter
 
-  astrogallery-cf-exporter:
-    image: ghcr.io/lablabs/cloudflare_exporter:latest
-    container_name: astrogallery-cf-exporter
+  astrogallery-cfstats:
+    image: python:3.13-alpine
+    container_name: astrogallery-cfstats
     restart: unless-stopped
+    command: ["python3", "-u", "/cfstats.py"]
     env_file:
       - stats.env
     environment:
-      FREE_TIER: "true"
-      # The token is scoped to one zone and cannot list accounts; without the account ID the
-      # exporter finds no zones and exports nothing, silently.
-      CF_ACCOUNTS: "1af8aed3f98147f68fac56b454e7d355"
-      CF_ZONES: "3fcb25fe008a40cb7666bbad075e7909"  # bortle9.space
-      SCRAPE_INTERVAL: "60"  # telegraf.conf scrapes at the same cadence
-      SCRAPE_DELAY: "300"
-      LISTEN: ":8080"
-      LOG_LEVEL: "info"  # logs the accounts and zones it found at startup
+      CF_ZONE_ID: "3fcb25fe008a40cb7666bbad075e7909"  # bortle9.space
+    volumes:
+      - ./cfstats.py:/cfstats.py:ro
+    user: "65534:65534"
     read_only: true
     security_opt:
       - no-new-privileges:true

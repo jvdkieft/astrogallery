@@ -809,7 +809,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_total\" WHERE $timeFilter"
+          "query": "SELECT sum(\"requests\") FROM \"cf_hourly\" WHERE $timeFilter"
         }
       ],
       "options": {
@@ -835,7 +835,7 @@
     },
     {
       "type": "stat",
-      "title": "Served from Cloudflare's cache",
+      "title": "Unique visitors (Cloudflare, per hour summed)",
       "id": 22,
       "gridPos": {
         "h": 4,
@@ -852,7 +852,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_cached\" WHERE $timeFilter"
+          "query": "SELECT sum(\"uniques\") FROM \"cf_hourly\" WHERE $timeFilter"
         }
       ],
       "options": {
@@ -895,7 +895,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_bandwidth_total\" WHERE $timeFilter"
+          "query": "SELECT sum(\"bytes\") FROM \"cf_hourly\" WHERE $timeFilter"
         }
       ],
       "options": {
@@ -938,7 +938,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_threats_total\" WHERE $timeFilter"
+          "query": "SELECT sum(\"threats\") FROM \"cf_hourly\" WHERE $timeFilter"
         }
       ],
       "options": {
@@ -982,14 +982,21 @@
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "all requests",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_total\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
+          "query": "SELECT sum(\"requests\") FROM \"cf_hourly\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
         },
         {
           "refId": "B",
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "from cache",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_cached\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
+          "query": "SELECT sum(\"cached_requests\") FROM \"cf_hourly\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
+        },
+        {
+          "refId": "C",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "unique visitors",
+          "query": "SELECT sum(\"uniques\") FROM \"cf_hourly\" WHERE $timeFilter GROUP BY time(1h) fill(0)"
         }
       ],
       "options": {
@@ -1035,7 +1042,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT sum(\"counter\") AS \"requests\" FROM \"cloudflare_zone_requests_country\" WHERE $timeFilter GROUP BY \"country\""
+          "query": "SELECT sum(\"requests\") AS \"requests\" FROM \"cf_country\" WHERE $timeFilter GROUP BY \"country\""
         }
       ],
       "transformations": [
@@ -1106,7 +1113,7 @@
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "$tag_status",
-          "query": "SELECT sum(\"counter\") FROM \"cloudflare_zone_requests_status\" WHERE $timeFilter GROUP BY time(1h), \"status\" fill(0)"
+          "query": "SELECT sum(\"requests\") FROM \"cf_status\" WHERE $timeFilter GROUP BY time(1h), \"status\" fill(0)"
         }
       ],
       "options": {
@@ -1149,7 +1156,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; the country is the code Cloudflare attaches. `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are per-minute zone totals from Cloudflare's GraphQL API, five minutes behind. Compare them with Analytics → Traffic in the Cloudflare dashboard once; they should agree for a full day."
+        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; the country is the code Cloudflare attaches. `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
       }
     }
   ]

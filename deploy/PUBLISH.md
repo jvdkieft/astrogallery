@@ -181,7 +181,7 @@ browser (the CSP would not let it anyway) and no visitor address is stored.
 
 ```
 nginx (boris) --JSON log, one file a month--> Telegraf (boris) --> InfluxDB "astrogallery" (escher) --> Grafana (escher:3000)
-Cloudflare GraphQL --cloudflare-exporter (boris)--> Telegraf ---^
+Cloudflare GraphQL --cfstats.py (boris), hourly totals, every 15 min-------------^
 ```
 
 - **Origin:** `deploy/nginx.conf` writes one JSON line per request to
@@ -193,24 +193,26 @@ Cloudflare GraphQL --cloudflare-exporter (boris)--> Telegraf ---^
   request time, referer, user agent, Cloudflare ray id. **No IP address.**
   A full-res download counts when the whole file went out with status 200; a download manager
   fetching it in ranges (206) shows in the status chart but not in the download table.
-- **Edge:** the `cloudflare_exporter` container asks Cloudflare's GraphQL API, once a minute,
-  for one minute of zone totals (requests, cached requests, bytes, threats, by country and by
-  status), five minutes behind real time. Those include the image requests Cloudflare answered
-  from its cache, which never reach boris. Telegraf scrapes it at the same cadence, so the
-  points in InfluxDB are per-minute counts and sum to the totals.
+- **Edge:** `deploy/cfstats.py` (container `astrogallery-cfstats`, `python:3.13-alpine`, standard
+  library only) asks Cloudflare's GraphQL API every 15 minutes for the zone's hourly totals of the
+  last 26 hours (`httpRequests1hGroups`) and writes them to InfluxDB: `cf_hourly` (requests,
+  cached requests, bytes, cached bytes, threats, page views, unique visitors), `cf_country` and
+  `cf_status`. These include the image requests Cloudflare answered from its cache, which never
+  reach boris. Re-writing an hour replaces it, so the current hour fills in and nothing doubles.
+  The free plan has **no per-minute data** (`httpRequests1mGroups` answers "does not have access
+  to the path"), which is why an off-the-shelf exporter built on it (lablabs/cloudflare-exporter,
+  tried first) exports nothing on this zone. `python3 cfstats.py --print` inside the container
+  prints what it would write.
 - **Telegraf** (`deploy/telegraf.conf`, container `astrogallery-stats`) tails the log and
-  scrapes the exporter, and writes both to the `astrogallery` database on escher's
+  writes it to the `astrogallery` database on escher's
   InfluxDB 1.8 (`http://192.168.1.4:8086`, no authentication on the LAN). Measurement `access`
-  for the origin (tags host, method, status, kind, page, country, lan, source=origin), and
-  one measurement per exporter metric for the edge (`cloudflare_zone_requests_total`, ...,
-  field `counter`, tags zone, country, status, source=edge).
+  for the origin (tags host, method, status, kind, page, country, lan, source=origin).
 
 ### Setup (once)
 
 1. Cloudflare dashboard → My Profile → API Tokens → Create Token → Custom: permission
-   **Zone / Analytics / Read** (Zone / Zone / Read does no harm), zone resource **Include /
-   Specific zone / bortle9.space**. Nothing else. Copy the token. Because it cannot list accounts,
-   the exporter is given the account ID in `docker-compose.stats.yml` (`CF_ACCOUNTS`).
+   **Zone / Analytics / Read**, zone resource **Include / Specific zone / bortle9.space**.
+   Nothing else. Copy the token.
 2. On boris, next to the compose file:
 
    ```
@@ -220,7 +222,7 @@ Cloudflare GraphQL --cloudflare-exporter (boris)--> Telegraf ---^
 
 3. `make deploy` from the Mac. It prints "stats.env found: starting the traffic stats", creates
    `./logs` (owned by nginx's uid 101) and starts `astrogallery-stats` and
-   `astrogallery-cf-exporter`. The database is created by Telegraf if it does not exist.
+   `astrogallery-cfstats`. The database is created by Telegraf if it does not exist.
 4. Grafana (`http://escher.home.vandekieft.net:3000`): Connections → Data sources → Add →
    InfluxDB: query language InfluxQL, URL `http://192.168.1.4:8086`, database `astrogallery`,
    HTTP method GET, no auth. Save & test. Then Dashboards → New → Import → upload
@@ -230,11 +232,11 @@ Cloudflare GraphQL --cloudflare-exporter (boris)--> Telegraf ---^
    `curl -s 'http://192.168.1.4:8086/query?db=astrogallery&q=SELECT+count(bytes)+FROM+access'`
    returns a number; the Cloudflare numbers in Grafana should match Analytics → Traffic in the
    Cloudflare dashboard for the same day (verify once; if they do not, the exporter's minute
-   window and Telegraf's scrape have drifted apart).
+   window and the hour boundaries disagree; `docker logs astrogallery-cfstats` shows each round).
 
 ### Turning it off
 
-Delete `stats.env` on boris, `docker rm -f astrogallery-stats astrogallery-cf-exporter`, and
+Delete `stats.env` on boris, `docker rm -f astrogallery-stats astrogallery-cfstats`, and
 `make deploy`. The log keeps being written (it is cheap and local); drop the `./logs` line from
 `deploy/docker-compose.yml` and the `access_log` line from `deploy/nginx.conf` to stop that too.
 
