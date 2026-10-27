@@ -92,39 +92,78 @@ ORIENTATION = 0x0112  # the one Exif tag the full-res copy keeps
 def strip_metadata(src, dst, orientation=None):
     """Copy the JPEG at src to dst without its metadata. The picture data, the JFIF and Adobe
     headers and the ICC profile are kept byte for byte; every other APPn segment (Exif, XMP,
-    IPTC/Photoshop, MPF previews) and comments are dropped. An orientation other than 1 is
-    written back as a two-tag Exif block, so the copy shows the same way up as the original.
-    Raises ValueError for anything that is not a baseline/progressive JPEG stream."""
+    IPTC/Photoshop, MPF previews) and comments are dropped, also between the scans of a
+    progressive file, and so is anything after the EOI marker (motion-photo videos and maker
+    trailers live there). An orientation of 2..8 is written back as a one-tag Exif block, so the
+    copy shows the same way up as the original. Raises ValueError for anything that is not a
+    JPEG stream."""
     with open(src, "rb") as f:
         data = f.read()
+    n = len(data)
     if data[:2] != b"\xff\xd8":
         raise ValueError("not a JPEG")
-    out = [b"\xff\xd8"]
-    if orientation and orientation != 1:
+    exif = b""
+    if isinstance(orientation, int) and 2 <= orientation <= 8:  # the values exif_transpose honours
         tiff = (b"II*\0" + (8).to_bytes(4, "little") + (1).to_bytes(2, "little")
                 + ORIENTATION.to_bytes(2, "little") + (3).to_bytes(2, "little") + (1).to_bytes(4, "little")
-                + int(orientation).to_bytes(2, "little") + b"\0\0" + b"\0\0\0\0")
-        exif = b"Exif\0\0" + tiff
-        out.append(b"\xff\xe1" + (len(exif) + 2).to_bytes(2, "big") + exif)
+                + orientation.to_bytes(2, "little") + b"\0\0" + b"\0\0\0\0")
+        payload = b"Exif\0\0" + tiff
+        exif = b"\xff\xe1" + (len(payload) + 2).to_bytes(2, "big") + payload
+    out = [b"\xff\xd8"]
     i = 2
     while True:
-        if i + 4 > len(data) or data[i] != 0xFF:
+        while i + 1 < n and data[i] == 0xFF and data[i + 1] == 0xFF:  # fill bytes before a marker
+            i += 1
+        if i + 1 >= n or data[i] != 0xFF:
             raise ValueError("corrupt JPEG header")
         marker = data[i + 1]
-        if marker in (0xDA, 0xD9):  # SOS: the scan follows, nothing after it is metadata; or EOI
-            out.append(data[i:])
+        if marker == 0xD9:  # EOI: the picture ends here, whatever follows is not it
+            out.append(b"\xff\xd9")
             break
-        n = int.from_bytes(data[i + 2:i + 4], "big")
-        seg = data[i:i + 2 + n]
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:  # TEM, RSTn: no length
+            out.append(data[i:i + 2])
+            i += 2
+            continue
+        ln = int.from_bytes(data[i + 2:i + 4], "big") if i + 4 <= n else 0
+        if ln < 2 or i + 2 + ln > n:
+            raise ValueError("corrupt JPEG header")
+        seg = data[i:i + 2 + ln]
         payload = seg[4:]
         if 0xE0 <= marker <= 0xEF or marker == 0xFE:  # APPn or COM
             keep = (marker == 0xE0 or (marker == 0xE2 and payload.startswith(b"ICC_PROFILE\0"))
                     or (marker == 0xEE and payload.startswith(b"Adobe")))
-        else:  # quantisation and Huffman tables, frame header, restart interval, ...
+        else:  # tables, frame and scan headers, restart interval, ...
             keep = True
         if keep:
+            if exif and marker != 0xE0:  # no JFIF header: Exif goes first instead
+                out.append(exif)
+                exif = b""
             out.append(seg)
-        i += 2 + n
+            if exif and marker == 0xE0:  # JFIF must stay right after SOI; Exif follows it
+                out.append(exif)
+                exif = b""
+        i += 2 + ln
+        if marker != 0xDA:
+            continue
+        # SOS: entropy-coded data up to the next marker. FF00 is a stuffed byte, FFD0-D7 a
+        # restart marker and FFFF a fill byte; none of them ends the scan.
+        j = i
+        while True:
+            j = data.find(b"\xff", j)
+            if j < 0 or j + 1 >= n:  # no EOI at all: keep what there is, it is all picture
+                j = n
+                break
+            m = data[j + 1]
+            if m == 0 or 0xD0 <= m <= 0xD7:
+                j += 2
+            elif m == 0xFF:
+                j += 1
+            else:
+                break
+        out.append(data[i:j])
+        i = j
+        if i >= n:
+            break
     with open(dst, "wb") as f:
         f.write(b"".join(out))
 
@@ -214,7 +253,9 @@ class Images:
                         self.manifest[slug] = {**key, **fut.result()}
                     except Exception as e:  # unreadable or half-copied JPG: keep the rest of the site going
                         old = self.manifest.get(slug)
-                        if old and all(map(os.path.exists, self.paths(slug))):
+                        # only a derivative set of this generation may stand in: an older full/
+                        # copy would still carry the metadata GEN_VERSION 2 strips
+                        if old and old.get("v") == GEN_VERSION and all(map(os.path.exists, self.paths(slug))):
                             warn(f"cannot read {key['src']} ({e}); still showing {old['src']}")
                             self.wanted[slug] = old["src"]
                         else:
@@ -627,7 +668,9 @@ def write(path, text):
 
 
 def selftest():
-    """strip_metadata against a JPEG carrying every kind of metadata it must drop (make test)."""
+    """strip_metadata and make_derivatives against a progressive JPEG carrying every kind of
+    metadata they must drop, plus a fill byte, a comment between scans and a trailer after EOI
+    (make test)."""
     import tempfile
     im = Image.effect_mandelbrot((320, 200), (-2, -1.5, 1, 1.5), 40).convert("RGB")
     exif = Image.Exif()
@@ -635,24 +678,44 @@ def selftest():
     exif[0xA431] = "SERIAL"
     exif.get_ifd(0x8825)[29] = "GPSDATE"
     icc = srgb_bytes()
+    secrets = (b"SERIAL", b"GPSDATE", b"COMMENT", b"XMP", b"MIDSCAN", b"TRAILER")
     with tempfile.TemporaryDirectory() as d:
         src, dst = os.path.join(d, "a.jpg"), os.path.join(d, "b.jpg")
-        im.save(src, "JPEG", exif=exif, icc_profile=icc, comment=b"COMMENT", xmp=b"<x>XMP</x>")
+        im.save(src, "JPEG", progressive=True, exif=exif, icc_profile=icc, comment=b"COMMENT", xmp=b"<x>XMP</x>")
         with open(src, "rb") as f:
             raw = f.read()
-        assert all(s in raw for s in (b"SERIAL", b"GPSDATE", b"COMMENT", b"XMP", b"ICC_PROFILE")), "bad fixture"
+        assert raw.count(b"\xff\xda") > 1 and raw.endswith(b"\xff\xd9"), "fixture not progressive"
+        dqt = raw.index(b"\xff\xdb")
+        second_sos = raw.index(b"\xff\xda", raw.index(b"\xff\xda") + 2)
+        com = b"\xff\xfe" + (9).to_bytes(2, "big") + b"MIDSCAN"
+        raw = raw[:dqt] + b"\xff" + raw[dqt:second_sos] + com + raw[second_sos:] + b"TRAILER-GPS"
+        with open(src, "wb") as f:
+            f.write(raw)
+        assert all(s in raw for s in secrets + (b"ICC_PROFILE",)), "bad fixture"
+        assert Image.open(src).tobytes(), "Pillow cannot read the fixture"
+
         strip_metadata(src, dst, 6)
         with open(dst, "rb") as f:
             out = f.read()
-        assert not any(s in out for s in (b"SERIAL", b"GPSDATE", b"COMMENT", b"XMP")), "metadata left in"
+        assert not any(s in out for s in secrets), "metadata left in"
+        assert out.endswith(b"\xff\xd9") and b"\xff\xff\xdb" not in out, "trailer or fill byte kept"
         b = Image.open(dst)
         assert b.tobytes() == Image.open(src).tobytes(), "pixels changed"
         assert b.info.get("icc_profile") == icc, "ICC profile lost"
         assert dict(b.getexif()) == {ORIENTATION: 6}, f"exif {dict(b.getexif())}"
         assert "comment" not in b.info and "xmp" not in b.info, list(b.info)
-        strip_metadata(src, dst, 1)
-        with open(dst, "rb") as f:
-            assert b"Exif" not in f.read(), "orientation 1 still wrote Exif"
+        for o in (1, None, (6, 6), 0):
+            strip_metadata(src, dst, o)
+            with open(dst, "rb") as f:
+                assert b"Exif" not in f.read(), f"orientation {o!r} wrote Exif"
+
+        paths = tuple(os.path.join(d, p) for p in ("t.jpg", "d.jpg", "f.jpg"))
+        info = make_derivatives((src, *paths))
+        assert (info["dw"], info["dh"]) == (200, 320), info  # transposed
+        for p in paths:
+            with open(p, "rb") as f:
+                assert not any(s in f.read() for s in secrets), f"{os.path.basename(p)} leaks"
+        assert dict(Image.open(paths[2]).getexif()) == {ORIENTATION: 6}
     print("selftest: ok", file=sys.stderr)
 
 
