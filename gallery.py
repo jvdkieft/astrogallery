@@ -56,6 +56,9 @@ GROUPS = [
 ]
 GROUP_ORDER = ["emission", "reflection", "snr", "planetary", "galaxies", "clusters", "solar", "other"]
 
+RECENT = 6  # cards in the "What's new" row
+NEW_DAYS = 14  # a target updated this recently gets a "new" badge
+
 esc = html.escape
 
 
@@ -461,6 +464,29 @@ def drop_failed(targets, images):
     return out
 
 
+def set_updated(targets, images):
+    """t["updated"] (YYYY-MM-DD): the latest night in the names of the images the target shows,
+    or the file's modification date for a name without nights (a picks.yaml file)."""
+    for t in targets:
+        days = []
+        for slug in [t["natural"], t["hoo"], *t["inset"].values(), *t["alts"]]:
+            if not slug:
+                continue
+            name = images.wanted[slug]
+            p = autopicks.parse(name)
+            if p:
+                days.append(max(p["nights"]))
+            else:
+                mtime = os.path.getmtime(os.path.join(images.src_dir, name))
+                days.append(dt.date.fromtimestamp(mtime).strftime("%Y%m%d"))
+        d = max(days)
+        t["updated"] = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+
+
+def is_new(t, today):
+    return (today - dt.date.fromisoformat(t["updated"])).days <= NEW_DAYS
+
+
 def filter_name(s):
     return FILTERS.get((s["scope"], s.get("filter")), s.get("filter") or "?")
 
@@ -523,10 +549,11 @@ def card_kind(kind):
     return ", ".join(w for w in (x.strip() for x in kind.split(",")) if w.lower() != "mosaic")
 
 
-def card(t, images):
+def card(t, images, today, dated=False):
+    """One index card; `dated` adds an "Updated" line (the What's new and Newest first views)."""
     slug = t["hoo"] or t["natural"]
     i = images.info(slug)
-    meta = []
+    meta = [f'Updated {t["updated"]}'] if dated else []
     if t["scopes"]:
         meta.append(" + ".join(SCOPES[s] for s in t["scopes"]))
     if t["nights"]:
@@ -536,29 +563,38 @@ def card(t, images):
         meta.append(", ".join(t["filters"]))
     badges = "".join(f'<span class="badge">{b}</span>' for b in
                      (["HOO"] if t["hoo"] else []) + (["mosaic"] if "mosaic" in t["kind"].lower() else []))
+    if is_new(t, today):
+        badges += '<span class="badge new">new</span>'
     return f"""<a class="card" href="{esc(t['id'])}.html">
   <img src="img/{slug}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}" loading="lazy">
   <div class="card-body">
     <h3>{esc(t['name'])}</h3>
     <p class="kind">{esc(card_kind(t['kind']))}{badges}</p>
     {depth_bar(t)}
-    {"".join(f'<p class="meta">{esc(m)}</p>' for m in meta)}
+    {"".join(f'<p class="meta{" updated" if dated and not n else ""}">{esc(m)}</p>' for n, m in enumerate(meta))}
   </div>
 </a>"""
 
 
-def index_html(targets, images, generated):
+def index_html(targets, images, generated, today):
     present = [g for g in GROUP_ORDER if any(t["group"] == g for t in targets)]
     names = {gid: label for gid, label, _ in GROUPS}
     chips = ['<input type="radio" name="f" id="f-all" class="sr" checked><label for="f-all">All</label>']
     rules = []
-    for g in present:
-        chips.append(f'<input type="radio" name="f" id="f-{g}" class="sr"><label for="f-{g}">{names[g]}</label>')
+    for g in present + ["newest"]:
+        label = "Newest first" if g == "newest" else names[g]
+        chips.append(f'<input type="radio" name="f" id="f-{g}" class="sr"><label for="f-{g}">{label}</label>')
         rules.append(f"body:has(#f-{g}:checked) .group:not(#g-{g}){{display:none}}")
-    sections = []
+    # "All" shows the What's new row above the groups; "Newest first" shows every target by date instead
+    rules.append("#g-newest{display:none} body:has(#f-newest:checked) #g-newest{display:block}")
+    by_date = sorted(targets, key=lambda t: t["updated"], reverse=True)  # stable: page order breaks ties
+    recent = "\n".join(card(t, images, today, dated=True) for t in by_date[:RECENT])
+    sections = [f'<section class="group" id="g-recent"><h2>What\'s new</h2>\n<div class="grid">\n{recent}\n</div></section>']
     for g in present:
-        cards = "\n".join(card(t, images) for t in targets if t["group"] == g)
+        cards = "\n".join(card(t, images, today) for t in targets if t["group"] == g)
         sections.append(f'<section class="group" id="g-{g}"><h2>{names[g]}</h2>\n<div class="grid">\n{cards}\n</div></section>')
+    newest = "\n".join(card(t, images, today, dated=True) for t in by_date)
+    sections.append(f'<section class="group" id="g-newest"><h2>Newest first</h2>\n<div class="grid">\n{newest}\n</div></section>')
     total = sum(t["hours"] for t in targets)
     body = f"""<header class="site-header">
   <h1>Astro gallery</h1>
@@ -791,6 +827,7 @@ def main():
     targets = load_targets(paths["picks"], load_inventory(paths), images)
     images.build(a.jobs)
     targets = drop_failed(targets, images)
+    set_updated(targets, images)
     used = set(images.wanted.values())
     unnamed = [n for n in finished_jpgs(paths["finished"]) if n not in used and not autopicks.parse(n)]
 
@@ -799,7 +836,7 @@ def main():
     day = now.strftime("%Y-%m-%d")  # the public footer: a time zone would say where the builder is
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
     keep = {"index.html", "status.html", "style.css", ".manifest.json", "img", "full"}
-    write(os.path.join(a.out, "index.html"), index_html(ordered, images, day))
+    write(os.path.join(a.out, "index.html"), index_html(ordered, images, day, now.date()))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
         nxt = ordered[n + 1] if n + 1 < len(ordered) else None

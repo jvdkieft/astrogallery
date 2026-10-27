@@ -61,6 +61,8 @@ h2 { font-size: 1.15rem; margin: 2rem 0 .75rem; color: var(--muted); letter-spac
   display: inline-block; margin-left: .4rem; padding: 0 .4rem; border: 1px solid var(--line);
   border-radius: 4px; font-size: .72rem; vertical-align: 1px;
 }
+.badge.new { color: var(--bg); background: var(--done); border-color: var(--done); font-weight: 600; }
+.card .meta.updated { color: var(--text); }
 
 /* depth bar */
 .depth { display: flex; align-items: center; gap: .6rem; font-size: .82rem; }
@@ -102,6 +104,7 @@ table.sessions { border-collapse: collapse; width: 100%; font-size: .9rem; font-
   .grid { gap: 10px; }
   .card-body { padding: .5rem .6rem .65rem; }
   .card .meta { display: none; }
+  .card .meta.updated { display: block; }
   .depth .bar { flex-basis: 50px; }
   .sessions .short { display: inline; }
   .sessions.one-filter .flt { display: none; }  /* the one filter is listed above the table */
