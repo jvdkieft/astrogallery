@@ -115,7 +115,10 @@ either way.
   (`/cdn-cgi/challenge-platform/.../jsd/main.js`), which the site's
   `Content-Security-Policy: default-src 'none'` blocks, so it would only produce console
   errors and a crippled detection. The static site, the rate limit and the origin throttle
-  are the bot defence.
+  are the bot defence. (Five minutes after switching it off the pages still carried the
+  snippet; if `curl -A Mozilla https://bortle9.space/ | grep -c '<script'` is not 0 a day
+  later, something else injects it. Once the hardened config is deployed the CSP blocks it
+  either way, so the only symptom is a console message.)
 - Speed → Settings: **Rocket Loader off** (default; it also injects JavaScript). Speed
   Brain, Early Hints and Cloudflare Fonts are on by default and are header-only or a
   no-op for a site without Google Fonts; leave them.
