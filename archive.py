@@ -103,12 +103,12 @@ def main():
     if a.dry_run or not todo:
         return
 
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as lst:
-        lst.write("\n".join(todo) + "\n")
+    with tempfile.NamedTemporaryFile("wb", suffix=".txt", delete=False) as lst:
+        lst.write(b"\0".join(os.fsencode(p) for p in todo) + b"\0")  # NUL-separated: any file name goes
     try:
         # -rlt: no owner/group/permissions from the Mac; --files-from keeps the relative paths
-        rc = subprocess.run(["rsync", "-rlt", "--partial", "--progress", f"--files-from={lst.name}",
-                             a.ssd + "/", f"{a.boris}:{a.share}/"]).returncode
+        rc = subprocess.run(["rsync", "-rlt", "--partial", "--progress", "--from0", f"--files-from={lst.name}",
+                             a.ssd + "/", f"{a.boris}:{shlex.quote(a.share)}/"]).returncode
     finally:
         os.unlink(lst.name)
     # Unraid ownership for what was just copied, and for folders root created on the way
@@ -116,8 +116,8 @@ def main():
     script = ("cd {share} && while IFS= read -r -d '' p; do "
               "[ -e \"$p\" ] && [ \"$(stat -c %U \"$p\")\" = root ] && chown nobody:users \"$p\" && "
               "{{ [ -d \"$p\" ] && chmod 777 \"$p\" || chmod 666 \"$p\"; }}; done").format(share=shlex.quote(a.share))
-    payload = "\0".join(todo + dirs) + "\0"
-    subprocess.run(["ssh", "-o", "BatchMode=yes", a.boris, script], input=payload.encode(), check=False)
+    payload = b"\0".join(os.fsencode(p) for p in todo + dirs) + b"\0"
+    subprocess.run(["ssh", "-o", "BatchMode=yes", a.boris, script], input=payload, check=False)
     if rc:
         sys.exit(f"rsync exited {rc}; run it again to finish (it only copies what is still missing)")
     print("done; run again with --dry-run to check: it should say 0 files")

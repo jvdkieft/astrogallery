@@ -24,6 +24,7 @@ import html
 import io
 import json
 import os
+import re
 import shutil
 import sys
 from concurrent.futures import ProcessPoolExecutor
@@ -177,20 +178,22 @@ def make_derivatives(job):
     icc = im.info.get("icc_profile")
     if im.mode not in ("RGB", "L"):
         im = im.convert("RGB")
+    warnings = []  # a worker process: warn() here would never reach the parent's status.html
     if icc:
         try:
             im = ImageCms.profileToProfile(
                 im, ImageCms.ImageCmsProfile(io.BytesIO(icc)),
                 ImageCms.createProfile("sRGB"), outputMode="RGB")
-        except ImageCms.PyCMSError as e:
-            warn(f"{os.path.basename(src)}: ICC conversion failed ({e}), assuming sRGB")
+        except (ImageCms.PyCMSError, OSError, ValueError) as e:  # a garbage profile is an OSError
+            warnings.append(f"{os.path.basename(src)}: ICC conversion failed ({e}), assuming sRGB")
     if im.mode != "RGB":
         im = im.convert("RGB")
     W, H = im.size
-    out = {"w": W, "h": H}
+    out = {"w": W, "h": H, "warnings": warnings}
     for path, edge, q, sub in ((display, DISPLAY, 88, 0), (thumb, THUMB, 82, 2)):
         r = im.copy()
-        r.info.pop("comment", None)  # Pillow would carry a COM segment over; nothing else from the source
+        for k in ("comment", "xmp"):  # Pillow carries a COM segment over; nothing else from the source
+            r.info.pop(k, None)
         r.thumbnail((edge, edge), Image.LANCZOS)  # never upscales
         tmp = path + ".tmp"
         r.save(tmp, "JPEG", quality=q, progressive=True, optimize=True,
@@ -221,6 +224,10 @@ class Images:
         """Register `name` (a file in Finished/) under `slug`; returns the slug or None if missing."""
         if not name:
             return None
+        name = str(name)
+        if "/" in name or os.sep in name or name in (".", ".."):
+            warn(f"not a plain file name in Finished/: {name!r}")
+            return None
         if not os.path.isfile(os.path.join(self.src_dir, name)):
             warn(f"missing in Finished/: {name}")
             return None
@@ -250,7 +257,7 @@ class Images:
                         for slug, key in todo]
                 for slug, key, fut in futs:
                     try:
-                        self.manifest[slug] = {**key, **fut.result()}
+                        res = fut.result()
                     except Exception as e:  # unreadable or half-copied JPG: keep the rest of the site going
                         old = self.manifest.get(slug)
                         # only a derivative set of this generation may stand in: an older full/
@@ -263,16 +270,26 @@ class Images:
                             self.failed.add(slug)
                             del self.wanted[slug]
                         continue
+                    for w in res.pop("warnings", ()):
+                        warn(w)
+                    self.manifest[slug] = {**key, **res}
                     print(f"  {slug}", file=sys.stderr)
         else:
             print(f"images: all {len(self.wanted)} up to date", file=sys.stderr)
-        # drop derivatives of images no longer picked
+        self.save_manifest()
+
+    def prune(self):
+        """Drop the derivatives of images no longer picked. Called once the pages are written, so a
+        build that dies in between never leaves a page pointing at a deleted image."""
         for slug in list(self.manifest):
             if slug not in self.wanted:
                 for p in self.paths(slug):
                     if os.path.exists(p):
                         os.remove(p)
                 del self.manifest[slug]
+        self.save_manifest()
+
+    def save_manifest(self):
         with open(self.mpath + ".tmp", "w") as f:
             json.dump(self.manifest, f, indent=1, sort_keys=True)
         os.replace(self.mpath + ".tmp", self.mpath)
@@ -320,11 +337,19 @@ def load_inventory(paths):
             sessions = json.load(f)
         if not sessions:
             sys.exit(f"{inv_path} has no sessions; delete it to scan Source Data instead")
+        try:
+            for s in sessions:
+                s["scope"], s["target"], s["night"] = str(s.get("scope") or ""), str(s.get("target") or ""), str(s.get("night") or "")
+                s["frames"], s["exp"], s["hours"] = int(s.get("frames") or 0), float(s.get("exp") or 0), float(s.get("hours") or 0)
+        except (TypeError, ValueError, AttributeError) as e:
+            sys.exit(f"{inv_path}: unusable session {s!r} ({e})")
         print(f"sessions: {len(sessions)} from {inv_path}", file=sys.stderr)
         return sessions
     have = [p for p in (source, nina) if p and os.path.isdir(p)]
     if have:
         sessions = inventory_scan.scan(source, nina, paths["reject"])
+        for problem in inventory_scan.PROBLEMS:
+            warn(problem)
         if sessions:
             hours = sum(s["hours"] for s in sessions)
             print(f"sessions: {len(sessions)} ({hours:.1f} h) from {' + '.join(have)}"
@@ -345,10 +370,20 @@ def load_picks(picks_path):
     return (minyaml.load(picks_path) or {}).get("targets") or []
 
 
+def utf8_name(name):
+    """False (with a warning) for a file name that is not valid UTF-8: it could not be written into a page."""
+    try:
+        name.encode("utf-8")
+        return True
+    except UnicodeEncodeError:
+        warn(f"file name is not UTF-8, skipped: {name!r}")
+        return False
+
+
 def load_targets(picks_path, inventory, images):
     """picks.yaml merged with the automatic picks from the Finished/ file names (autopicks.py)."""
     try:
-        files = sorted(e.name for e in os.scandir(images.src_dir) if e.is_file())
+        files = sorted(e.name for e in os.scandir(images.src_dir) if e.is_file() and utf8_name(e.name))
     except OSError as e:
         sys.exit(f"cannot read {images.src_dir}: {e}")
     picks = load_picks(picks_path)
@@ -362,14 +397,20 @@ def load_targets(picks_path, inventory, images):
     targets, seen = [], set()
     for p in entries:
         tid = str(p.get("id") or "")
-        if not tid or tid in seen:
-            warn(f"pick without a unique id: {p.get('name')!r}")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", tid) or tid in seen:  # it names files and pages
+            warn(f"pick without a usable, unique id: {p.get('id')!r} ({p.get('name')!r})")
             continue
         seen.add(tid)
         if p.get("show") is False:
             continue
-        t = {"id": tid, "name": p.get("name") or tid, "kind": p.get("kind") or "",
-             "goal": p.get("goal_h"), "group": group_of(p.get("kind"))}
+        goal = p.get("goal_h")
+        try:
+            goal = float(goal) if goal not in (None, "") else None
+        except (TypeError, ValueError):
+            warn(f"{tid}: goal_h {goal!r} is not a number, ignored")
+            goal = None
+        kind = str(p.get("kind") or "")
+        t = {"id": tid, "name": str(p.get("name") or tid), "kind": kind, "goal": goal, "group": group_of(kind)}
 
         t["natural"] = images.add(f"{tid}-natural", p.get("natural"))
         t["hoo"] = images.add(f"{tid}-hoo", p.get("hoo"))
@@ -388,7 +429,10 @@ def load_targets(picks_path, inventory, images):
         t["src"] = images.wanted  # slug -> source name, for captions
 
         sessions = []
-        for key in p.get("sessions") or []:
+        keys = p.get("sessions") or []
+        if isinstance(keys, str):
+            keys = [keys]
+        for key in keys:
             if inventory is not None and key not in by_key:
                 warn(f"{tid}: session key {key!r} not in the capture sessions")
             sessions += [s for s in by_key.get(key, []) if s.get("frames", 0) > 0]
@@ -492,7 +536,7 @@ def card(t, images):
         meta.append(", ".join(t["filters"]))
     badges = "".join(f'<span class="badge">{b}</span>' for b in
                      (["HOO"] if t["hoo"] else []) + (["mosaic"] if "mosaic" in t["kind"].lower() else []))
-    return f"""<a class="card" href="{t['id']}.html">
+    return f"""<a class="card" href="{esc(t['id'])}.html">
   <img src="img/{slug}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}" loading="lazy">
   <div class="card-body">
     <h3>{esc(t['name'])}</h3>
@@ -527,23 +571,25 @@ def index_html(targets, images, generated):
     return page("Astro gallery", body, generated, extra_head=f"<style>{' '.join(rules)}</style>\n")
 
 
-def figure(slug, images, cls, caption):
+def figure(slug, images, cls, caption, alt):
     i = images.info(slug)
     mb = i["bytes"] / 1e6
     return f"""<figure class="{cls}">
   <a href="img/{slug}-{DISPLAY}.jpg"><img src="img/{slug}-{DISPLAY}.jpg"
     srcset="img/{slug}-{THUMB}.jpg {i['tw']}w, img/{slug}-{DISPLAY}.jpg {i['dw']}w"
-    sizes="(max-width: 1200px) 100vw, 1200px" width="{i['dw']}" height="{i['dh']}" alt="{esc(caption)}"></a>
+    sizes="(max-width: 1200px) 100vw, 1200px" width="{i['dw']}" height="{i['dh']}" alt="{esc(alt)}"></a>
   <figcaption><span class="file">{esc(caption)}</span>
     <a class="dl" href="full/{slug}.jpg" download="{esc(caption)}">Full resolution · {i['w']}×{i['h']} · {mb:.1f} MB</a></figcaption>
 </figure>"""
 
 
-def viewer(vid, nat, hoo, t, images):
-    """A natural/HOO pair with a CSS-only toggle (HOO checked first); a single image otherwise."""
+def viewer(vid, nat, hoo, t, images, what=""):
+    """A natural/HOO pair with a CSS-only toggle (HOO checked first); a single image otherwise.
+    `what` names the viewer in the alt text ("detail"); the file name stays in the caption."""
+    alt = t["name"] + (f", {what}" if what else "")
     if not (nat and hoo):
         s = nat or hoo
-        return f'<div class="viewer single">{figure(s, images, "shown", t["src"][s])}</div>'
+        return f'<div class="viewer single">{figure(s, images, "shown", t["src"][s], alt + (", HOO" if hoo else ""))}</div>'
     return f"""<div class="viewer">
   <input type="radio" name="{vid}" id="{vid}-hoo" class="sr r-hoo" checked>
   <input type="radio" name="{vid}" id="{vid}-nat" class="sr r-nat">
@@ -551,8 +597,8 @@ def viewer(vid, nat, hoo, t, images):
     <label for="{vid}-hoo" class="l-hoo">HOO</label><label for="{vid}-nat" class="l-nat">Natural</label>
   </div>
   <div class="frames">
-    {figure(hoo, images, "f-hoo", t["src"][hoo])}
-    {figure(nat, images, "f-nat", t["src"][nat])}
+    {figure(hoo, images, "f-hoo", t["src"][hoo], alt + ", HOO")}
+    {figure(nat, images, "f-nat", t["src"][nat], alt + ", natural")}
   </div>
 </div>"""
 
@@ -565,8 +611,8 @@ def night_cell(night, one_year):
 def target_html(t, prev, nxt, images, generated):
     parts = [f"""<header class="target-header">
   <nav class="crumbs"><a href="index.html">← Gallery</a>
-    <span class="pn">{f'<a href="{prev["id"]}.html">‹ {esc(prev["name"])}</a>' if prev else ''}
-    {f'<a href="{nxt["id"]}.html">{esc(nxt["name"])} ›</a>' if nxt else ''}</span></nav>
+    <span class="pn">{f'<a href="{esc(prev["id"])}.html">‹ {esc(prev["name"])}</a>' if prev else ''}
+    {f'<a href="{esc(nxt["id"])}.html">{esc(nxt["name"])} ›</a>' if nxt else ''}</span></nav>
   <h1>{esc(t['name'])}</h1>
   <p class="kind">{esc(t['kind'])}</p>
 </header>
@@ -583,14 +629,14 @@ def target_html(t, prev, nxt, images, generated):
 
     ins = t["inset"]
     if ins["natural"] or ins["hoo"]:
-        parts.append('<section><h2>Detail</h2>' + viewer("inset", ins["natural"], ins["hoo"], t, images) + "</section>")
+        parts.append('<section><h2>Detail</h2>' + viewer("inset", ins["natural"], ins["hoo"], t, images, "detail") + "</section>")
 
     if t["alts"]:
         items = []
-        for s in t["alts"]:
+        for n, s in enumerate(t["alts"], 1):
             i = images.info(s)
             items.append(f"""<figure>
-  <a href="img/{s}-{DISPLAY}.jpg"><img src="img/{s}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['src'][s])}" loading="lazy"></a>
+  <a href="img/{s}-{DISPLAY}.jpg"><img src="img/{s}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}, other version {n}" loading="lazy"></a>
   <figcaption><span class="file">{esc(t['src'][s])}</span>
     <a class="dl" href="full/{s}.jpg" download="{esc(t['src'][s])}">Full resolution · {i['w']}×{i['h']}</a></figcaption>
 </figure>""")
@@ -599,7 +645,7 @@ def target_html(t, prev, nxt, images, generated):
     if t["sessions"]:
         one_year = len({n[:4] for n in t["nights"]}) == 1
         rows = "".join(
-            f'<tr><td>{night_cell(s["night"], one_year)}</td><td><span class="long">{SCOPES.get(s["scope"], s["scope"])}</span><span class="short">{s["scope"]}</span></td><td class="flt">{esc(filter_name(s))}</td>'
+            f'<tr><td>{night_cell(esc(s["night"]), one_year)}</td><td><span class="long">{esc(SCOPES.get(s["scope"], s["scope"]))}</span><span class="short">{esc(s["scope"])}</span></td><td class="flt">{esc(filter_name(s))}</td>'
             f'<td class="num">{s["frames"]} × {fmt_exp(s["exp"])}</td><td class="num">{s["hours"]:.2f}</td></tr>'
             for s in t["sessions"])
         parts.append(f"""<section><h2>Sessions</h2>
@@ -640,21 +686,21 @@ def status_html(targets, images, unnamed, generated):
                      "so they are not on the site. Rename them, or use them from picks.yaml.</p><ul class=\"files\">"
                      + "".join(f"<li>{esc(n)}</li>" for n in unnamed) + "</ul></section>")
     rows = "".join(
-        f'<tr><td><a href="{t["id"]}.html">{esc(t["name"])}</a></td>'
+        f'<tr><td><a href="{esc(t["id"])}.html">{esc(t["name"])}</a></td>'
         f'<td class="file">{esc(images.wanted.get(t["hoo"] or t["natural"], ""))}</td>'
         f'<td class="num">{t["hours"]:.1f}{goal_of(t)}</td>'
         f'<td class="num">{len(t["nights"])}</td></tr>' for t in targets)
     parts.append(f"""<section><h2>Targets</h2><div class="table-wrap"><table class="sessions">
 <thead><tr><th>Target</th><th>Main image</th><th class="num">Hours / goal</th><th class="num">Nights</th></tr></thead>
 <tbody>{rows}</tbody></table></div></section></main>""")
-    return page("Build status · Astro gallery", "\n".join(parts), generated)
+    return page("Build status · Astro gallery", "\n".join(parts), generated[:10])
 
 
 # ---------------------------------------------------------------- main
 
 def finished_jpgs(folder):
     try:
-        return sorted(e.name for e in os.scandir(folder) if e.is_file()
+        return sorted(e.name for e in os.scandir(folder) if e.is_file() and utf8_name(e.name)
                       and e.name.lower().endswith((".jpg", ".jpeg")) and not e.name.startswith("."))
     except OSError:
         return []
@@ -748,20 +794,25 @@ def main():
     used = set(images.wanted.values())
     unnamed = [n for n in finished_jpgs(paths["finished"]) if n not in used and not autopicks.parse(n)]
 
-    generated = dt.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    now = dt.datetime.now().astimezone()
+    generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html (LAN only)
+    day = now.strftime("%Y-%m-%d")  # the public footer: a time zone would say where the builder is
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
     keep = {"index.html", "status.html", "style.css", ".manifest.json", "img", "full"}
-    write(os.path.join(a.out, "index.html"), index_html(ordered, images, generated))
+    write(os.path.join(a.out, "index.html"), index_html(ordered, images, day))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
         nxt = ordered[n + 1] if n + 1 < len(ordered) else None
-        write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, generated))
+        write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, day))
         keep.add(f"{t['id']}.html")
     write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated))
-    shutil.copyfile(os.path.join(HERE, "static", "style.css"), os.path.join(a.out, "style.css"))
+    css = os.path.join(a.out, "style.css")
+    shutil.copyfile(os.path.join(HERE, "static", "style.css"), css + ".tmp")
+    os.replace(css + ".tmp", css)
     for name in os.listdir(a.out):  # pages of targets that were removed or hidden
         if name.endswith(".html") and name not in keep:
             os.remove(os.path.join(a.out, name))
+    images.prune()
 
     print(f"site: {len(ordered)} targets -> {a.out}", file=sys.stderr)
     for t in ordered:

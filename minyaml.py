@@ -13,7 +13,7 @@ def _strip_comment(line):
         if quote:
             if ch == quote:
                 quote = None
-        elif ch in "\"'":
+        elif ch in "\"'" and line[:i].rstrip()[-1:] in ("", ":", "-", "[", ","):  # a quote starts a value only there
             quote = ch
         elif ch == "#" and (i == 0 or line[i - 1] in " \t"):
             break
@@ -46,7 +46,7 @@ def _scalar(s):
     if not s:
         return None
     if s[0] == s[-1] and s[0] in "\"'" and len(s) >= 2:
-        return s[1:-1]
+        return s[1:-1].replace('\\"', '"').replace("\\\\", "\\") if s[0] == '"' else s[1:-1].replace("''", "'")
     if s.startswith("[") and s.endswith("]"):
         return _split_flow(s[1:-1])
     low = s.lower()
@@ -65,9 +65,11 @@ def _scalar(s):
 
 def loads(text):
     toks = []
-    for raw in text.splitlines():
+    for n, raw in enumerate(text.splitlines(), 1):
         line = _strip_comment(raw)
         if line.strip():
+            if "\t" in line[:len(line) - len(line.lstrip())]:
+                raise ValueError(f"line {n}: tabs in the indentation; use spaces")
             toks.append([len(line) - len(line.lstrip(" ")), line.strip()])
     pos = 0
 
@@ -79,6 +81,8 @@ def loads(text):
                 rest = toks[pos][1][1:].lstrip()
                 if not rest:
                     pos += 1
+                    if pos >= len(toks) or toks[pos][0] <= ind:
+                        raise ValueError("a list item '-' without a value")
                     out.append(block(toks[pos][0]))
                 elif re.match(r"[^\"'\[]*?:(\s|$)", rest):
                     toks[pos] = [ind + 2, rest]  # "- key: v" starts a mapping one level in
@@ -102,14 +106,19 @@ def loads(text):
                 out[key] = None
         return out
 
-    return block(toks[0][0]) if toks else None
+    if not toks:
+        return None
+    out = block(toks[0][0])
+    if pos < len(toks):  # a misindented line would otherwise silently end the file here
+        raise ValueError(f"cannot place line {toks[pos][1]!r} (indentation?)")
+    return out
 
 
 def load(path):
     try:
         import yaml
     except ImportError:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:  # -sig: Notepad's BOM would otherwise be part of the first key
             return loads(f.read())
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         return yaml.safe_load(f)
