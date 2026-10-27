@@ -123,6 +123,33 @@ That starts two containers:
 Rerun `make deploy` only when the code changes. Override the target with
 `make deploy BORIS=user@host APPDATA=/path GALLERY_ROOT=/mnt/user/<share>`.
 
+## Facing the internet
+
+The site is static, has no JavaScript and is served read-only, so what is published is the
+only thing to protect. What this repo does for that:
+
+- `full/` copies are the Finished JPG with its metadata stripped (`strip_metadata` in gallery.py):
+  Exif, XMP, IPTC and comments go; picture data, ICC profile and orientation stay. A JPG exported
+  with a GPS tag or a camera serial in it does not publish them. The web derivatives never had any.
+- `deploy/nginx.conf`: no version string, `.manifest.json` and `*.tmp` are 404, `status.html`
+  (share paths in warnings, builder log after a failed build) is only served to addresses on the
+  home network, `full/` downloads are limited to two at a time per address at 4 MB/s, and a
+  Content-Security-Policy allows nothing to run. The
+  client address is taken from `X-Forwarded-For` when the request came through a proxy on a
+  private network (NPM, a tunnel connector).
+- `deploy/docker-compose.yml`: the nginx container is read-only and cannot gain privileges.
+
+What is not in this repo and has to be right on the network side:
+
+- Expose only this site. Forwarding a port to Nginx Proxy Manager exposes every host NPM knows,
+  by name; the `*.home.vandekieft.net` certificate covers them all. Prefer a tunnel that
+  publishes one hostname (Cloudflare Tunnel, `cloudflared` on proxynet pointing at
+  `http://astrogallery:80`), or put an access list on every other NPM host and never forward NPM's
+  admin port (81) or the UDM's console.
+- Cloudflare's free certificate covers `vandekieft.net` and `*.vandekieft.net` only, so a proxied
+  or tunnelled `astro.home.vandekieft.net` fails TLS; use `astro.vandekieft.net` (or a paid
+  certificate) for the public name and keep `astro.home.` for the LAN.
+
 ## Rebuild loop
 
 After a processing session: copy the JPG into `Finished/` on the share. New capture data in

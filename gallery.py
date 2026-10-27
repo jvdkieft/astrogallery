@@ -12,8 +12,10 @@ overrides them field by field. Hours and sessions come from scanning Source Data
 builder container on boris uses those. Without sessions the site has no hours.
 
 Reads only; nothing under --root is ever written. Web derivatives (600 px thumb, 2560 px
-display, both progressive sRGB JPEG) and a byte copy of the full-res JPG go in site/img and
-site/full. They are rebuilt only when the source file's mtime or size changes
+display, both progressive sRGB JPEG) and a copy of the full-res JPG go in site/img and
+site/full. The copy keeps the picture data byte for byte but not the metadata (Exif, XMP,
+IPTC, comments): a JPG exported with a location or a camera serial in it must not publish them.
+Derivatives are rebuilt only when the source file's mtime or size changes
 (site/.manifest.json), so a rerun after a single new image is quick.
 """
 import argparse
@@ -34,7 +36,7 @@ import minyaml
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 THUMB, DISPLAY = 600, 2560
-GEN_VERSION = 1  # bump to force every derivative to be rebuilt
+GEN_VERSION = 2  # bump to force every derivative to be rebuilt (2: full/ copies lose their metadata)
 
 SCOPES = {"S30P": "Seestar S30 Pro", "D3": "Dwarf 3"}
 # How the filter shows on the site. Seestar files say IRCUT for "LP off" (broadband).
@@ -84,10 +86,54 @@ def srgb_bytes():
     return _SRGB
 
 
+ORIENTATION = 0x0112  # the one Exif tag the full-res copy keeps
+
+
+def strip_metadata(src, dst, orientation=None):
+    """Copy the JPEG at src to dst without its metadata. The picture data, the JFIF and Adobe
+    headers and the ICC profile are kept byte for byte; every other APPn segment (Exif, XMP,
+    IPTC/Photoshop, MPF previews) and comments are dropped. An orientation other than 1 is
+    written back as a two-tag Exif block, so the copy shows the same way up as the original.
+    Raises ValueError for anything that is not a baseline/progressive JPEG stream."""
+    with open(src, "rb") as f:
+        data = f.read()
+    if data[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG")
+    out = [b"\xff\xd8"]
+    if orientation and orientation != 1:
+        tiff = (b"II*\0" + (8).to_bytes(4, "little") + (1).to_bytes(2, "little")
+                + ORIENTATION.to_bytes(2, "little") + (3).to_bytes(2, "little") + (1).to_bytes(4, "little")
+                + int(orientation).to_bytes(2, "little") + b"\0\0" + b"\0\0\0\0")
+        exif = b"Exif\0\0" + tiff
+        out.append(b"\xff\xe1" + (len(exif) + 2).to_bytes(2, "big") + exif)
+    i = 2
+    while True:
+        if i + 4 > len(data) or data[i] != 0xFF:
+            raise ValueError("corrupt JPEG header")
+        marker = data[i + 1]
+        if marker in (0xDA, 0xD9):  # SOS: the scan follows, nothing after it is metadata; or EOI
+            out.append(data[i:])
+            break
+        n = int.from_bytes(data[i + 2:i + 4], "big")
+        seg = data[i:i + 2 + n]
+        payload = seg[4:]
+        if 0xE0 <= marker <= 0xEF or marker == 0xFE:  # APPn or COM
+            keep = (marker == 0xE0 or (marker == 0xE2 and payload.startswith(b"ICC_PROFILE\0"))
+                    or (marker == 0xEE and payload.startswith(b"Adobe")))
+        else:  # quantisation and Huffman tables, frame header, restart interval, ...
+            keep = True
+        if keep:
+            out.append(seg)
+        i += 2 + n
+    with open(dst, "wb") as f:
+        f.write(b"".join(out))
+
+
 def make_derivatives(job):
     """Worker: one source JPG -> thumb + display JPG + full-res copy. Returns sizes."""
     src, thumb, display, full = job
     im = Image.open(src)
+    orientation = im.getexif().get(ORIENTATION)
     im = ImageOps.exif_transpose(im)
     icc = im.info.get("icc_profile")
     if im.mode not in ("RGB", "L"):
@@ -102,17 +148,19 @@ def make_derivatives(job):
     if im.mode != "RGB":
         im = im.convert("RGB")
     W, H = im.size
-    out = {"w": W, "h": H, "bytes": os.path.getsize(src)}
+    out = {"w": W, "h": H}
     for path, edge, q, sub in ((display, DISPLAY, 88, 0), (thumb, THUMB, 82, 2)):
         r = im.copy()
+        r.info.pop("comment", None)  # Pillow would carry a COM segment over; nothing else from the source
         r.thumbnail((edge, edge), Image.LANCZOS)  # never upscales
         tmp = path + ".tmp"
         r.save(tmp, "JPEG", quality=q, progressive=True, optimize=True,
                subsampling=sub, icc_profile=srgb_bytes())
         os.replace(tmp, path)
         out["dw" if edge == DISPLAY else "tw"], out["dh" if edge == DISPLAY else "th"] = r.size
-    shutil.copyfile(src, full + ".tmp")
+    strip_metadata(src, full + ".tmp", orientation)
     os.replace(full + ".tmp", full)
+    out["bytes"] = os.path.getsize(full)
     return out
 
 
@@ -578,6 +626,36 @@ def write(path, text):
     os.replace(tmp, path)
 
 
+def selftest():
+    """strip_metadata against a JPEG carrying every kind of metadata it must drop (make test)."""
+    import tempfile
+    im = Image.effect_mandelbrot((320, 200), (-2, -1.5, 1, 1.5), 40).convert("RGB")
+    exif = Image.Exif()
+    exif[ORIENTATION] = 6
+    exif[0xA431] = "SERIAL"
+    exif.get_ifd(0x8825)[29] = "GPSDATE"
+    icc = srgb_bytes()
+    with tempfile.TemporaryDirectory() as d:
+        src, dst = os.path.join(d, "a.jpg"), os.path.join(d, "b.jpg")
+        im.save(src, "JPEG", exif=exif, icc_profile=icc, comment=b"COMMENT", xmp=b"<x>XMP</x>")
+        with open(src, "rb") as f:
+            raw = f.read()
+        assert all(s in raw for s in (b"SERIAL", b"GPSDATE", b"COMMENT", b"XMP", b"ICC_PROFILE")), "bad fixture"
+        strip_metadata(src, dst, 6)
+        with open(dst, "rb") as f:
+            out = f.read()
+        assert not any(s in out for s in (b"SERIAL", b"GPSDATE", b"COMMENT", b"XMP")), "metadata left in"
+        b = Image.open(dst)
+        assert b.tobytes() == Image.open(src).tobytes(), "pixels changed"
+        assert b.info.get("icc_profile") == icc, "ICC profile lost"
+        assert dict(b.getexif()) == {ORIENTATION: 6}, f"exif {dict(b.getexif())}"
+        assert "comment" not in b.info and "xmp" not in b.info, list(b.info)
+        strip_metadata(src, dst, 1)
+        with open(dst, "rb") as f:
+            assert b"Exif" not in f.read(), "orientation 1 still wrote Exif"
+    print("selftest: ok", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     env = os.environ.get
@@ -594,7 +672,10 @@ def main():
                     "($GALLERY_NINA_REJECT) are left out")
     ap.add_argument("--out", default=env("GALLERY_OUT") or os.path.join(HERE, "site"))
     ap.add_argument("--jobs", type=int, default=int(env("GALLERY_JOBS") or 0) or os.cpu_count() or 4)
+    ap.add_argument("--selftest", action="store_true", help="check the metadata stripping and exit")
     a = ap.parse_args()
+    if a.selftest:
+        return selftest()
 
     paths = input_paths(a.root, a.finished, a.picks, "none" if a.no_inventory else a.inventory, a.source, a.nina)
     images = Images(paths["finished"], a.out)
