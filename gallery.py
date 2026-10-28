@@ -19,6 +19,7 @@ Derivatives are rebuilt only when the source file's mtime or size changes
 (site/.manifest.json), so a rerun after a single new image is quick.
 """
 import argparse
+import math
 import datetime as dt
 import html
 import io
@@ -540,7 +541,7 @@ def page(title, body, generated, css="style.css", extra_head=""):
 {extra_head}</head>
 <body>
 {body}
-<footer class="site-footer">Built {generated} · <a href="about.html">How these are made</a> · <a href="status.html">build status</a></footer>
+<footer class="site-footer">Built {generated} · <a href="about.html">How these are made</a> · <a href="stats.html">Stats</a> · <a href="status.html">build status</a></footer>
 </body>
 </html>
 """
@@ -779,6 +780,206 @@ both; the toggle above the image switches.</li>
     return page("How these are made · bortle9.space", body, generated)
 
 
+# ---------------------------------------------------------------- stats.html
+
+NARROWBAND = {"Duo-Band", "LP"}  # Dwarf 3 dual-band, Seestar "LP on" (Ha/OIII); the rest is broadband
+SYNODIC = 29.530588853
+NEW_MOON = dt.datetime(2000, 1, 6, 18, 14, tzinfo=dt.timezone.utc)
+
+
+def moon_lit(night):
+    """Fraction of the moon lit late on the evening of `night` (YYYY-MM-DD), about 11 pm US Central."""
+    t = dt.datetime.strptime(night, "%Y-%m-%d").replace(tzinfo=dt.timezone.utc) + dt.timedelta(days=1, hours=4)
+    age = ((t - NEW_MOON).total_seconds() / 86400) % SYNODIC
+    return (1 - math.cos(2 * math.pi * age / SYNODIC)) / 2
+
+
+def moon_glyph(lit, waxing=True):
+    return "🌑🌒🌓🌔🌕"[min(4, int(lit * 5))] if waxing else "🌑🌘🌗🌖🌕"[min(4, int(lit * 5))]
+
+
+def bars(rows, unit="h", total=None):
+    """rows: [(label, value, extra_html)] -> horizontal bar list, widths relative to the largest."""
+    top = max((v for _, v, _ in rows), default=0) or 1
+    out = []
+    for label, v, extra in rows:
+        pct = 100 * v / top
+        share = f' <span class="muted">{100 * v / total:.0f}%</span>' if total else ""
+        out.append(f'<div class="hbar"><span class="hl">{label}</span>'
+                   f'<span class="ht"><span style="width:{pct:.1f}%"></span></span>'
+                   f'<span class="hv">{v:,.1f} {unit}{share}{extra}</span></div>')
+    return "\n".join(out)
+
+
+def stats_html(sessions, targets, generated, today):
+    """stats.html: the nights, hours and moon behind the gallery. Everything from this build's data."""
+    ss = [x for x in (sessions or []) if (x.get("frames") or 0) > 0 and x.get("night")]
+    if not ss:
+        return page("Stats · bortle9.space", '<header class="target-header"><nav class="crumbs"><a href="index.html">← Gallery</a></nav>'
+                    '<h1>Stats</h1></header><main class="stats"><p>No capture data in this build.</p></main>', generated)
+    per_night = {}
+    for x in ss:
+        n = per_night.setdefault(x["night"], {"h": 0.0, "nb": 0.0, "bb": 0.0, "scopes": set(), "targets": set(), "frames": 0})
+        h = float(x.get("hours") or 0)
+        n["h"] += h
+        n["nb" if x.get("filter") in NARROWBAND else "bb"] += h
+        n["scopes"].add(x["scope"]); n["targets"].add(x.get("target")); n["frames"] += int(x["frames"])
+    nights = sorted(per_night)
+    total_h = sum(v["h"] for v in per_night.values())
+    first = dt.date.fromisoformat(nights[0])
+
+    # 1. calendar: one column per week (Sunday first), one square per day
+    start = first - dt.timedelta(days=(first.weekday() + 1) % 7)
+    weeks = (today - start).days // 7 + 1
+    cells, months = [], []
+    for w in range(weeks):
+        for d in range(7):
+            day = start + dt.timedelta(days=7 * w + d)
+            if day > today:
+                cells.append('<span class="d out"></span>')
+                continue
+            if day.day == 1 or (w == 0 and d == 0):
+                months.append(f'<span style="grid-column:{w + 1}">{day:%b}</span>')
+            n = per_night.get(day.isoformat())
+            if n:
+                lvl = 1 if n["h"] < 2 else 2 if n["h"] < 5 else 3 if n["h"] < 10 else 4
+                lit = moon_lit(day.isoformat())
+                tip = f'{day:%a %b} {day.day}: {n["h"]:.1f} h, {len(n["targets"])} targets, moon {lit:.0%} lit'
+                cells.append(f'<span class="d l{lvl}" title="{esc(tip)}"></span>')
+            else:
+                cells.append(f'<span class="d" title="{day:%a %b} {day.day}"></span>')
+    calendar = (f'<div class="cal" style="--weeks:{weeks}"><div class="cal-m">{"".join(months)}</div>'
+                f'<div class="cal-d">{"".join(cells)}</div></div>'
+                '<p class="legend muted">less <span class="d"></span><span class="d l1"></span><span class="d l2"></span>'
+                '<span class="d l3"></span><span class="d l4"></span> more · each square is a day; hover for the night</p>')
+
+    # 2. cumulative integration (inline SVG, a step line)
+    W, H, pad = 760, 220, 34
+    span = max(1, (today - first).days)
+    pts, cum = [(pad, H - pad)], 0.0
+    for nm in nights:
+        x = pad + (W - 2 * pad) * (dt.date.fromisoformat(nm) - first).days / span
+        y_prev = H - pad - (H - 2 * pad) * cum / total_h
+        cum += per_night[nm]["h"]
+        y = H - pad - (H - 2 * pad) * cum / total_h
+        pts += [(x, y_prev), (x, y)]
+    pts.append((W - pad, pts[-1][1]))
+    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    area = poly + f" {W - pad:.1f},{H - pad:.1f} {pad:.1f},{H - pad:.1f}"
+    ticks = []
+    m = dt.date(first.year, first.month, 1)
+    while m <= today:
+        if m >= first:
+            x = pad + (W - 2 * pad) * (m - first).days / span
+            ticks.append(f'<line x1="{x:.1f}" y1="{pad}" x2="{x:.1f}" y2="{H - pad}" class="grid"/>'
+                         f'<text x="{x:.1f}" y="{H - pad + 16}" class="lbl" text-anchor="middle">{m:%b}</text>')
+        m = dt.date(m.year + (m.month == 12), m.month % 12 + 1, 1)
+    curve = (f'<svg class="curve" viewBox="0 0 {W} {H}" role="img" aria-label="Cumulative hours of exposure from '
+             f'{first:%B} {first.day} to now: {total_h:.0f} hours"'
+             f'>{"".join(ticks)}<polygon points="{area}" class="fill"/><polyline points="{poly}" class="line"/>'
+             f'<text x="{W - pad}" y="{pad - 10}" class="lbl" text-anchor="end">{total_h:.0f} h</text>'
+             f'<text x="{pad}" y="{H - pad - 6}" class="lbl">{first:%b} {first.day}: first light</text></svg>')
+
+    # 3. moon
+    buckets = [("🌑 0–25% lit", 0, .25), ("🌓 25–50%", .25, .5), ("🌔 50–75%", .5, .75), ("🌕 75–100%", .75, 1.01)]
+    moon_rows = []
+    for label, lo, hi in buckets:
+        ns = [n for n in nights if lo <= moon_lit(n) < hi]
+        nb = sum(per_night[n]["nb"] for n in ns); bb = sum(per_night[n]["bb"] for n in ns)
+        moon_rows.append((label, len(ns), nb, bb))
+    top = max((nb + bb for _, _, nb, bb in moon_rows), default=1) or 1
+    moon = "\n".join(
+        f'<div class="hbar"><span class="hl">{label} <span class="muted">· {k} night{"s" if k != 1 else ""}</span></span>'
+        f'<span class="ht"><span class="nb" style="width:{100 * nb / top:.1f}%"></span>'
+        f'<span class="bb" style="width:{100 * bb / top:.1f}%"></span></span>'
+        f'<span class="hv">{nb:.1f} h narrowband · {bb:.1f} h broadband</span></div>'
+        for label, k, nb, bb in moon_rows)
+    bright_n = sum(r[1] for r in moon_rows[2:])
+
+    # 4. totals
+    scope_h = {}
+    for x in ss:
+        scope_h[x["scope"]] = scope_h.get(x["scope"], 0) + float(x.get("hours") or 0)
+    by_scope = bars([(SCOPES.get(k, k), v, "") for k, v in sorted(scope_h.items(), key=lambda kv: -kv[1])], total=total_h)
+    nb_h = sum(v["nb"] for v in per_night.values())
+    by_filter = bars([("Narrowband (dual-band Ha/OIII)", nb_h, ""), ("Broadband", total_h - nb_h, "")], total=total_h)
+    names = {gid: label for gid, label, _ in GROUPS}
+    grp = {}
+    for t in targets:
+        if t["hours"]:
+            grp[t["group"]] = grp.get(t["group"], 0) + t["hours"]
+    by_kind = bars([(names.get(g, g), v, "") for g, v in sorted(grp.items(), key=lambda kv: -kv[1])])
+
+    # 5. leaderboards
+    def board(rows):
+        return "<ol class=\"board\">" + "".join(f"<li>{r}</li>" for r in rows) + "</ol>"
+    link = lambda t: f'<a href="{esc(t["id"])}.html">{esc(t["name"])}</a>'
+    deep = board(f'{link(t)} <span class="muted">{t["hours"]:.1f} h</span>'
+                 for t in sorted(targets, key=lambda t: -t["hours"])[:5])
+    most = board(f'{link(t)} <span class="muted">{len(t["nights"])} nights</span>'
+                 for t in sorted(targets, key=lambda t: (-len(t["nights"]), -t["hours"]))[:5])
+    best = board(f'{dt.date.fromisoformat(n):%b} {int(n[8:])} <span class="muted">{per_night[n]["h"]:.1f} h · '
+                 f'{len(per_night[n]["targets"])} targets{" · both scopes" if len(per_night[n]["scopes"]) > 1 else ""}</span>'
+                 for n in sorted(nights, key=lambda n: -per_night[n]["h"])[:5])
+
+    # 6. goals
+    goal_t = [t for t in targets if t.get("goal") and t["sessions"]]
+    done = [t for t in goal_t if t["hours"] >= t["goal"]]
+    pct_done = 100 * len(done) / len(goal_t) if goal_t else 0
+    closest = sorted((t for t in goal_t if t["hours"] < t["goal"]), key=lambda t: -t["hours"] / t["goal"])[:6]
+    closest_html = "".join(f'<div class="goalrow">{link(t)}{depth_bar(t)}</div>' for t in closest)
+
+    frames = sum(v["frames"] for v in per_night.values())
+    body = f"""<header class="target-header">
+  <nav class="crumbs"><a href="index.html">← Gallery</a></nav>
+  <h1>Stats</h1>
+  <p class="kind">The nights, hours and moon behind the gallery</p>
+</header>
+<main class="stats">
+<div class="tiles">
+  <div class="tile"><b>{len(nights)}</b><span>nights out</span></div>
+  <div class="tile"><b>{total_h:.0f} h</b><span>of exposure</span></div>
+  <div class="tile"><b>{frames:,}</b><span>frames</span></div>
+  <div class="tile"><b>{len(targets)}</b><span>targets</span></div>
+  <div class="tile"><b>{len(done)}/{len(goal_t)}</b><span>at their goal</span></div>
+</div>
+
+<section><h2>Clear nights</h2>
+<p class="muted">Every night the scopes were out since first light, shaded by hours of exposure.</p>
+{calendar}</section>
+
+<section><h2>Integration over time</h2>
+{curve}</section>
+
+<section><h2>Shooting through the moon</h2>
+<p class="muted">Hours per moon phase. Dual-band filters cut through moonlight much the way they cut through city glow, so a bright moon rarely ends a night: {bright_n} of {len(nights)} nights out had the moon more than half lit.</p>
+<div class="key"><span class="sw nb"></span>narrowband <span class="sw bb"></span>broadband</div>
+{moon}</section>
+
+<section class="cols3">
+<div><h2>By scope</h2>{by_scope}</div>
+<div><h2>By filter</h2>{by_filter}</div>
+<div><h2>By kind of object</h2>{by_kind}</div>
+</section>
+
+<section class="cols3">
+<div><h2>Deepest</h2>{deep}</div>
+<div><h2>Most nights</h2>{most}</div>
+<div><h2>Best nights</h2>{best}</div>
+</section>
+
+<section><h2>Goals</h2>
+<div class="goalbar"><span style="width:{pct_done:.1f}%"></span></div>
+<p class="muted">{len(done)} of {len(goal_t)} targets have reached their depth goal. Closest to the line:</p>
+{closest_html}</section>
+
+<p class="note muted">Calendar, curve, moon and totals count everything captured ({total_h:.0f} h); the
+leaderboards and goals count what went into the finished images. Moon phase is computed for about
+11 pm on each night.</p>
+</main>"""
+    return page("Stats · bortle9.space", body, generated)
+
+
 def share_relative(msg, paths):
     """A warning with the share's own location cut off (status.html is public): '/data/Finished/x.jpg'
     -> 'Finished/x.jpg'. Covers the root and every input folder, either slash."""
@@ -916,7 +1117,8 @@ def main():
 
     paths = input_paths(a.root, a.finished, a.picks, "none" if a.no_inventory else a.inventory, a.source, a.nina)
     images = Images(paths["finished"], a.out)
-    targets = load_targets(paths["picks"], load_inventory(paths), images)
+    inventory = load_inventory(paths)
+    targets = load_targets(paths["picks"], inventory, images)
     images.build(a.jobs)
     targets = drop_failed(targets, images)
     set_updated(targets, images)
@@ -927,7 +1129,7 @@ def main():
     generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html
     day = now.strftime("%Y-%m-%d")  # the footers carry the date only
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
-    keep = {"index.html", "about.html", "status.html", "build-log.html", "style.css", ".manifest.json", "img", "full"}
+    keep = {"index.html", "about.html", "stats.html", "status.html", "build-log.html", "style.css", ".manifest.json", "img", "full"}
     write(os.path.join(a.out, "index.html"), index_html(ordered, images, day, now.date()))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
@@ -935,6 +1137,7 @@ def main():
         write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, day))
         keep.add(f"{t['id']}.html")
     write(os.path.join(a.out, "about.html"), about_html(ordered, day))
+    write(os.path.join(a.out, "stats.html"), stats_html(inventory, ordered, day, now.date()))
     write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated, paths))
     css = os.path.join(a.out, "style.css")
     shutil.copyfile(os.path.join(HERE, "static", "style.css"), css + ".tmp")
