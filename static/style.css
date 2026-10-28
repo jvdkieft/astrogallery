@@ -178,3 +178,4 @@ table.sessions { border-collapse: collapse; width: 100%; font-size: .9rem; font-
   .hbar { grid-template-columns: 1fr; gap: .15rem; }
   .goalrow { grid-template-columns: 1fr; gap: .1rem; }
 }
+.facts dd .note { display: block; color: var(--muted); font-size: .82rem; margin-top: .2rem; }

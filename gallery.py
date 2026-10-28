@@ -572,11 +572,22 @@ def card(t, images, today, dated=False):
   <img src="img/{slug}-{THUMB}.jpg" width="{i['tw']}" height="{i['th']}" alt="{esc(t['name'])}" loading="lazy">
   <div class="card-body">
     <h3>{esc(t['name'])}</h3>
-    <p class="kind">{esc(card_kind(t['kind']))}{badges}</p>
+    <p class="kind">{esc(card_kind(t['kind']))}{f' · {card_distance(t)}' if card_distance(t) else ''}{badges}</p>
     {depth_bar(t)}
     {"".join(f'<p class="meta{" updated" if dated and not n else ""}">{esc(m)}</p>' for n, m in enumerate(meta))}
   </div>
 </a>"""
+
+
+def lightline(targets):
+    """'The light in these pictures is between 444 years and 70 million years old.' (deep sky only)"""
+    ds = [(DISTANCE[t["id"]][0], t) for t in targets if t["id"] in DISTANCE]
+    if len(ds) < 2:
+        return ""
+    (lo, _), (hi, far) = min(ds, key=lambda x: x[0]), max(ds, key=lambda x: x[0])
+    age = lambda ly: ly_text(ly).replace("light-years", "years") if ly >= 1_000_000 else f"{ly:,} years"
+    return (f"The light in these pictures set out between {age(lo)} and {age(hi)} ago; the oldest is "
+            f'<a href="{esc(far["id"])}.html">{esc(far["name"])}</a>.')
 
 
 def index_html(targets, images, generated, today):
@@ -602,6 +613,7 @@ def index_html(targets, images, generated, today):
     body = f"""<header class="site-header">
   <h1>Deep sky from a Bortle 8.6 backyard</h1>
   <p class="sub">{len(targets)} targets · {total:.0f} h of stacked integration · Seestar S30 Pro and Dwarf 3 smart telescopes, narrowband filters against the suburban glow</p>
+  <p class="sub">{lightline(targets)}</p>
   <p class="sub about-link"><a href="about.html">How these are made →</a></p>
   <nav class="filters" aria-label="Filter by kind">{"".join(chips)}</nav>
 </header>
@@ -664,6 +676,7 @@ def target_html(t, prev, nxt, images, generated):
         facts.append(("Nights", f'{len(t["nights"])} · {date_range(t["nights"])}'))
         facts.append(("Scopes", esc(" + ".join(SCOPES[s] for s in t["scopes"]))))
         facts.append(("Filters", esc(", ".join(t["filters"]))))
+    facts += distance_facts(t)
     if facts:
         parts.append('<dl class="facts">' + "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts) + "</dl>")
 
@@ -778,6 +791,75 @@ both; the toggle above the image switches.</li>
 
 </main>"""
     return page("How these are made · bortle9.space", body, generated)
+
+
+# ---------------------------------------------------------------- distances
+
+# Distance from Earth by page id: light-years, plus a note where a frame holds objects at very
+# different distances. Rounded, commonly quoted values (Gaia-era where there is one); distances to
+# nebulae and galaxies are uncertain by 10-30%, so they are shown as "about". The solar system gets
+# a fixed text instead. A target missing here simply shows no distance.
+DISTANCE = {
+    "ngc281": (9_500, ""), "heart-soul": (7_500, ""), "veil": (2_400, ""), "c33": (2_400, ""),
+    "ngc6960": (2_400, ""), "m31": (2_500_000, ""), "m51": (28_000_000, ""), "m33": (2_700_000, ""),
+    "ngc6643": (70_000_000, ""), "c20": (2_600, ""), "ngc7000-mosaic": (2_600, ""),
+    "ngc7380": (7_200, ""), "ngc7023": (1_300, ""), "c27": (5_000, ""),
+    "m52-bubble": (7_100, "M52 is nearer, about 5,000 light-years"), "ic443": (5_000, ""),
+    "m1": (6_500, ""), "ngc891": (30_000_000, ""),
+    "ngc7331": (40_000_000, "Stephan's Quintet, behind it: about 290 million light-years"),
+    "double-cluster": (7_500, ""), "m45": (444, ""), "ic1396": (2_400, ""),
+    "ic405-410": (1_500, "the Tadpoles (IC 410) are far behind the Flaming Star, about 12,000 light-years"),
+    "ngc1499": (1_000, ""), "ngc7822": (3_000, ""), "sh2-108": (4_000, "Sadr itself is a foreground star, about 1,800 light-years"),
+    "ngc1333": (1_000, ""), "m81": (12_000_000, "M82 is at the same distance"), "ngc2237": (5_200, ""),
+    "ic5146": (2_500, ""), "ngc752": (1_400, ""), "ic342": (11_000_000, ""), "m27": (1_360, ""),
+    "m57": (2_600, ""), "c15": (4_500, ""), "c9": (2_400, ""), "ic63": (550, ""),
+    "m35": (2_800, "NGC 2158, the small cluster beside it, is about 11,000 light-years away"),
+    "ngc2403": (10_000_000, ""), "ngc7635": (7_100, ""), "alpha": (570, ""), "ngc2264": (2_500, ""),
+    "ic417": (10_000, ""), "ngc1491": (10_000, ""), "ngc2174": (6_400, ""), "sh2132": (10_000, ""),
+    "sh2240": (3_000, ""), "m42": (1_350, ""),
+}
+NEARBY = {  # solar system: (card text, page text, light travel time)
+    "moon": ("384,000 km", "384,400 km on average", "1.3 seconds"),
+    "sun": ("150 million km", "150 million km (1 astronomical unit)", "8.3 minutes"),
+    "saturn": ("1.3 billion km", "about 1.3 billion km near opposition in October 2026", "1.2 hours"),
+}
+THIS_YEAR = dt.date.today().year
+
+
+def ly_text(ly, short=False):
+    if ly >= 1_000_000:
+        m = ly / 1_000_000
+        return f'{m:.1f}'.rstrip("0").rstrip(".") + (" Mly" if short else " million light-years")
+    return f"{ly:,} ly" if short else f"{ly:,} light-years"
+
+
+def distance_facts(t):
+    """[(label, html)] for a target page: distance, and when its light set out."""
+    if t["id"] in NEARBY:
+        _, text, travel = NEARBY[t["id"]]
+        return [("Distance", esc(text)), ("Light travel time", esc(travel))]
+    d = DISTANCE.get(t["id"])
+    if not d:
+        return []
+    ly, note = d
+    dist = ("about " if ly >= 2_000 else "") + ly_text(ly) + (f'<span class="note">{esc(note)}</span>' if note else "")
+    year = THIS_YEAR - ly
+    if ly >= 1_000_000:
+        left = ly_text(ly).replace("light-years", "years ago")
+    elif ly > 10_000 or year < -5_000:
+        left = f"{ly:,} years ago"
+    elif year > 0:
+        left = f"around {year} AD"
+    else:
+        left = f"around {-year:,} BC"
+    return [("Distance", dist), ("Light left it", esc(left))]
+
+
+def card_distance(t):
+    if t["id"] in NEARBY:
+        return NEARBY[t["id"]][0]
+    d = DISTANCE.get(t["id"])
+    return ly_text(d[0], short=True) if d else ""
 
 
 # ---------------------------------------------------------------- stats.html
