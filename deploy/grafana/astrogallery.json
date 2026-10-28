@@ -65,7 +65,28 @@
   "schemaVersion": 39,
   "version": 1,
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "country",
+        "label": "Country",
+        "type": "query",
+        "datasource": {
+          "type": "influxdb",
+          "uid": "${DS_ASTRO}"
+        },
+        "query": "SHOW TAG VALUES FROM \"access\" WITH KEY = \"country\" WHERE \"lan\" = '0'",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "sort": 1,
+        "current": {
+          "text": "US",
+          "value": "US"
+        },
+        "hide": 0
+      }
+    ]
   },
   "annotations": {
     "list": []
@@ -483,13 +504,157 @@
     },
     {
       "type": "table",
+      "title": "Views by state / region ($country)",
+      "id": 14,
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"country\" =~ /^$country$/ AND $timeFilter GROUP BY \"country\", \"region\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "region": "state / region"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "views",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "views"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Views by city ($country)",
+      "id": 15,
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 10,
+        "y": 13
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"country\" =~ /^$country$/ AND $timeFilter GROUP BY \"country\", \"region\", \"city\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "region": "state / region"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "views",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "views"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
       "title": "Most viewed targets",
       "id": 9,
       "gridPos": {
         "h": 10,
         "w": 8,
         "x": 0,
-        "y": 13
+        "y": 22
       },
       "datasource": {
         "type": "influxdb",
@@ -559,7 +724,7 @@
         "h": 10,
         "w": 8,
         "x": 8,
-        "y": 13
+        "y": 22
       },
       "datasource": {
         "type": "influxdb",
@@ -629,7 +794,7 @@
         "h": 10,
         "w": 8,
         "x": 16,
-        "y": 13
+        "y": 22
       },
       "datasource": {
         "type": "influxdb",
@@ -673,7 +838,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 23
+        "y": 32
       },
       "datasource": {
         "type": "influxdb",
@@ -724,7 +889,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 23
+        "y": 32
       },
       "datasource": {
         "type": "influxdb",
@@ -785,7 +950,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 39
       },
       "id": 200,
       "panels": []
@@ -798,7 +963,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 31
+        "y": 40
       },
       "datasource": {
         "type": "influxdb",
@@ -841,7 +1006,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 31
+        "y": 40
       },
       "datasource": {
         "type": "influxdb",
@@ -884,7 +1049,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 31
+        "y": 40
       },
       "datasource": {
         "type": "influxdb",
@@ -927,7 +1092,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 31
+        "y": 40
       },
       "datasource": {
         "type": "influxdb",
@@ -970,7 +1135,7 @@
         "h": 8,
         "w": 16,
         "x": 0,
-        "y": 35
+        "y": 44
       },
       "datasource": {
         "type": "influxdb",
@@ -1031,7 +1196,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 35
+        "y": 44
       },
       "datasource": {
         "type": "influxdb",
@@ -1101,7 +1266,7 @@
         "h": 7,
         "w": 16,
         "x": 0,
-        "y": 43
+        "y": 52
       },
       "datasource": {
         "type": "influxdb",
@@ -1152,11 +1317,11 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 43
+        "y": 52
       },
       "options": {
         "mode": "markdown",
-        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; the country is the code Cloudflare attaches. `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
+        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; country, state/region and city come from Cloudflare's location headers (logged from 2026-10-27 on; earlier views have country only). The Country picker at the top filters the state and city tables. `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
       }
     }
   ]
