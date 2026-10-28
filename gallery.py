@@ -28,6 +28,7 @@ import os
 import re
 import shutil
 import sys
+import urllib.parse
 from concurrent.futures import ProcessPoolExecutor
 
 from PIL import Image, ImageCms, ImageOps
@@ -417,6 +418,15 @@ def load_targets(picks_path, inventory, images):
             goal = None
         kind = str(p.get("kind") or "")
         t = {"id": tid, "name": str(p.get("name") or tid), "kind": kind, "goal": goal, "group": group_of(kind)}
+        # optional nerd facts for a new object (the built-in DISTANCE / WIKI tables cover the rest)
+        dly = p.get("distance_ly")
+        try:
+            t["distance_ly"] = int(float(str(dly).replace(",", "").replace("_", ""))) if dly not in (None, "") else None
+        except (TypeError, ValueError):
+            warn(f"{tid}: distance_ly {dly!r} is not a number, ignored")
+            t["distance_ly"] = None
+        t["distance_note"] = str(p.get("distance_note") or "")
+        t["wiki"] = str(p.get("wiki") or "")
 
         t["natural"] = images.add(f"{tid}-natural", p.get("natural"))
         t["hoo"] = images.add(f"{tid}-hoo", p.get("hoo"))
@@ -581,7 +591,7 @@ def card(t, images, today, dated=False):
 
 def lightline(targets):
     """'The light in these pictures is between 444 years and 70 million years old.' (deep sky only)"""
-    ds = [(DISTANCE[t["id"]][0], t) for t in targets if t["id"] in DISTANCE]
+    ds = [(distance_of(t)[0], t) for t in targets if distance_of(t)]
     if len(ds) < 2:
         return ""
     (lo, _), (hi, far) = min(ds, key=lambda x: x[0]), max(ds, key=lambda x: x[0])
@@ -677,6 +687,10 @@ def target_html(t, prev, nxt, images, generated):
         facts.append(("Scopes", esc(" + ".join(SCOPES[s] for s in t["scopes"]))))
         facts.append(("Filters", esc(", ".join(t["filters"]))))
     facts += distance_facts(t)
+    more = read_more(t)
+    if more:
+        title, site, url = more
+        facts.append(("Read more", f'<a href="{esc(url)}" rel="noopener">{esc(title)}</a> <span class="muted">on {esc(site)}</span>'))
     if facts:
         parts.append('<dl class="facts">' + "".join(f"<div><dt>{k}</dt><dd>{v}</dd></div>" for k, v in facts) + "</dl>")
 
@@ -826,6 +840,13 @@ NEARBY = {  # solar system: (card text, page text, light travel time)
 THIS_YEAR = dt.date.today().year
 
 
+def distance_of(t):
+    """(light-years, note) from picks.yaml (distance_ly, distance_note), else the DISTANCE table."""
+    if t.get("distance_ly"):
+        return t["distance_ly"], t.get("distance_note") or ""
+    return DISTANCE.get(t["id"])
+
+
 def ly_text(ly, short=False):
     if ly >= 1_000_000:
         m = ly / 1_000_000
@@ -838,7 +859,7 @@ def distance_facts(t):
     if t["id"] in NEARBY:
         _, text, travel = NEARBY[t["id"]]
         return [("Distance", esc(text)), ("Light travel time", esc(travel))]
-    d = DISTANCE.get(t["id"])
+    d = distance_of(t)
     if not d:
         return []
     ly, note = d
@@ -858,8 +879,40 @@ def distance_facts(t):
 def card_distance(t):
     if t["id"] in NEARBY:
         return NEARBY[t["id"]][0]
-    d = DISTANCE.get(t["id"])
+    d = distance_of(t)
     return ly_text(d[0], short=True) if d else ""
+
+
+# English Wikipedia article per page id (exact titles, checked 2026-10-27). picks.yaml can set
+# `wiki:` for a new object: an article title, or a full https:// URL for anything else.
+WIKI = {
+    "ngc281": "NGC 281", "heart-soul": "Heart Nebula", "veil": "Veil Nebula", "c33": "Veil Nebula",
+    "ngc6960": "Veil Nebula", "m31": "Andromeda Galaxy", "m51": "Whirlpool Galaxy", "m33": "Triangulum Galaxy",
+    "c20": "North America Nebula", "ngc7000-mosaic": "North America Nebula", "ngc7380": "NGC 7380",
+    "ngc7023": "Iris Nebula", "c27": "Crescent Nebula", "m52-bubble": "Bubble Nebula", "ic443": "IC 443",
+    "m1": "Crab Nebula", "ngc891": "NGC 891", "ngc7331": "NGC 7331", "double-cluster": "Double Cluster",
+    "m45": "Pleiades", "ic1396": "IC 1396", "ic405-410": "IC 405", "ngc1499": "California Nebula",
+    "ngc7822": "NGC 7822", "sh2-108": "IC 1318", "ngc1333": "NGC 1333", "m81": "Messier 81",
+    "ngc2237": "Rosette Nebula", "ic5146": "IC 5146", "ngc752": "NGC 752", "ic342": "IC 342",
+    "m27": "Dumbbell Nebula", "m57": "Ring Nebula", "c15": "NGC 6826", "c9": "Sh 2-155", "ic63": "Sh 2-185",
+    "m35": "Messier 35", "ngc2403": "NGC 2403", "ngc7635": "Bubble Nebula", "alpha": "Alpha Persei Cluster",
+    "ngc2264": "NGC 2264", "ic417": "IC 417", "ngc1491": "NGC 1491", "ngc2174": "NGC 2174",
+    "sh2132": "Sh 2-132", "sh2240": "Simeis 147", "m42": "Orion Nebula", "moon": "Moon", "sun": "Sun",
+    "saturn": "Saturn", "161p": "161P/Hartley–IRAS",
+    # no article of its own; SIMBAD, the professional object database, instead
+    "ngc6643": "https://simbad.cds.unistra.fr/simbad/sim-id?Ident=NGC+6643",
+}
+
+
+def read_more(t):
+    """('Heart Nebula', 'Wikipedia', url) for a target page, or None."""
+    w = t.get("wiki") or WIKI.get(t["id"])
+    if not w:
+        return None
+    if w.startswith(("https://", "http://")):
+        site = "SIMBAD" if "simbad" in w else "NED" if "ned.ipac" in w else w.split("/")[2]
+        return t["name"], site, w
+    return w, "Wikipedia", "https://en.wikipedia.org/wiki/" + urllib.parse.quote(w.replace(" ", "_"), safe="/–")
 
 
 # ---------------------------------------------------------------- stats.html
@@ -1096,6 +1149,15 @@ def status_html(targets, images, unnamed, generated, paths=None):
                      "<p class=\"note\">These finished JPGs don't follow the file naming the gallery reads, "
                      "so they are not on the site yet.</p><ul class=\"files\">"
                      + "".join(f"<li>{esc(n)}</li>" for n in unnamed) + "</ul></section>")
+    lacking = [t for t in targets if not distance_of(t) and t["id"] not in NEARBY and "comet" not in t["kind"]]
+    nolink = [t for t in targets if not read_more(t)]
+    if lacking or nolink:
+        items = "".join(f'<li>{esc(t["name"])} <span class="muted">({esc(t["id"])}): no '
+                        f'{" and no ".join(x for x, miss in (("distance", t in lacking), ("Read more link", t in nolink)) if miss)}</span></li>'
+                        for t in targets if t in lacking or t in nolink)
+        parts.append('<section><h2>Missing details</h2><p class="note">Add <code>distance_ly</code> (and '
+                     '<code>distance_note</code>) and <code>wiki</code> to the target in picks.yaml; see PROCESSING.md.</p>'
+                     f'<ul class="files">{items}</ul></section>')
     rows = "".join(
         f'<tr><td><a href="{esc(t["id"])}.html">{esc(t["name"])}</a></td>'
         f'<td class="file">{esc(images.wanted.get(t["hoo"] or t["natural"], ""))}</td>'

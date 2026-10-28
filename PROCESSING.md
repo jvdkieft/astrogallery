@@ -117,6 +117,9 @@ targets:
       natural: IC 1848 Soul D3 PixInsight 20261003+1004 wide.jpg
       hoo: IC 1848 Soul D3 PixInsight HOO 20261003+1004 wide.jpg
     show: false                       # hides the target
+    distance_ly: 1350                 # distance from Earth for a new object (see below)
+    distance_note: the Trapezium stars light it up    # optional line under the distance
+    wiki: Orion Nebula                # English Wikipedia article title, or a full https:// URL
 ```
 
 Rules:
@@ -144,6 +147,27 @@ themselves. Review it before it replaces the share's copy.
 Keep picks.yaml plain YAML: block lists and maps, `[a, b]` lists, `#` comments. PyYAML is not
 installed on the Mac or in the builder, and the fallback reader handles nothing fancier (no
 anchors, no multi-line strings).
+
+### Distance and "Read more" link for a new object
+
+Every target page shows its distance from Earth, how long ago its light left, and a "Read more"
+link (usually Wikipedia). The objects already on the site have these built in. A **new object**
+shows up on status.html under *Missing details* until its picks.yaml entry has them:
+
+```yaml
+  - id: m13                           # the page id status.html shows
+    distance_ly: 22200                # commonly quoted value, rounded; "about" is added from 2,000 ly up
+    distance_note: one of the brightest globular clusters    # optional
+    wiki: Messier 13                  # the exact article title; check it opens on en.wikipedia.org
+```
+
+- Use a widely quoted distance (Wikipedia's infobox, preferring a Gaia-based value) and round it.
+  For a frame with objects at very different distances, give the main one and put the other in
+  `distance_note` ("the Tadpoles are about 12,000 light-years").
+- Object with no Wikipedia article: `wiki:` takes a full URL instead, for example SIMBAD:
+  `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=NGC+6643`.
+- Moon, planets and comets get no light-year distance; the Moon, Sun and Saturn have fixed text.
+- Only the entry's `id` and these fields are needed; everything else stays automatic.
 
 ## 4. Check the build
 
