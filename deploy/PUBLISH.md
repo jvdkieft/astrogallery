@@ -191,7 +191,8 @@ Cloudflare GraphQL --cfstats.py (boris), hourly totals, every 15 min------------
   (index / page / img / full / css / robots / status / other), `page` (the page or `full/` file
   when it was served with 200, else `-`), `country` (the two-letter code Cloudflare attaches;
   `-` from the LAN), `region` and `city` (from Cloudflare's "Add visitor location headers" managed
-  transform, Rules → Settings, on since 2026-10-27), `lan` (1 when the request came through Nginx Proxy Manager), bytes,
+  transform, Rules → Settings, on since 2026-10-27), `asn` (the visitor's network number, from the request
+  header transform rule "Visitor network (ASN) header": `x-visitor-asn = to_string(ip.src.asnum)`), `lan` (1 when the request came through Nginx Proxy Manager), bytes,
   request time, referer, user agent, Cloudflare ray id. **No IP address.**
   A full-res download counts when the whole file went out with status 200; a download manager
   fetching it in ranges (206) shows in the status chart but not in the download table.
@@ -208,7 +209,7 @@ Cloudflare GraphQL --cfstats.py (boris), hourly totals, every 15 min------------
 - **Telegraf** (`deploy/telegraf.conf`, container `astrogallery-stats`) tails the log and
   writes it to the `astrogallery` database on escher's
   InfluxDB 1.8 (`http://192.168.1.4:8086`, no authentication on the LAN). Measurement `access`
-  for the origin (tags host, method, status, kind, page, country, region, city, lan, source=origin).
+  for the origin (tags host, method, status, kind, page, country, region, city, asn, ref_site, agent, lan, source=origin).
 
 ### Setup (once)
 
