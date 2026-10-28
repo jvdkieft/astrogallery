@@ -1174,7 +1174,7 @@
     {
       "type": "table",
       "title": "All requests by device (bots included)",
-      "id": 21,
+      "id": 29,
       "gridPos": {
         "h": 9,
         "w": 7,
