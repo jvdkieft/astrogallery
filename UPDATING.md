@@ -26,7 +26,7 @@ the right files on the share.
    - From the PC (scopessd is `E:\`): copy the new JPG from `E:\Finished` to `Y:\Finished`, and the
      night's capture folders from `E:\Seestar S30 Pro`, `E:\Dwarf 3` and `E:\NINA` to the same places under `Y:\`.
      Run `make archive-check` on the Mac later to catch anything you missed.
-3. **Wait a couple of minutes**, then open https://bortle9.space/status.html (the "build status" link in
+3. **Wait a couple of minutes**, then open https://astro.home.vandekieft.net/status.html (the "build status" link in
    every page's footer). Check that the build time is recent, there are no
    warnings, nothing is listed under "Not published", and the target shows the new image and hours.
 4. Open the target's page and look at it.
