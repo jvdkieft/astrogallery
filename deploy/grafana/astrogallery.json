@@ -2583,6 +2583,493 @@
         "mode": "markdown",
         "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; country, state/region and city come from Cloudflare's location headers (logged from 2026-10-27 on; earlier views have country only). The Country picker at the top filters the state and city tables. The network is the visitor's AS number (added by a Cloudflare transform rule, logged from 2026-10-27 on); common ones are named, the rest show as a number you can look up. Source is the referring site; device is bot, mobile or desktop, guessed from the browser's user agent (bots that pretend to be browsers count as desktop). `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
       }
+    },
+    {
+      "type": "table",
+      "title": "Blocked or challenged at Cloudflare, by reason",
+      "id": 33,
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 88
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT count(\"path\") AS \"requests\" FROM \"cf_security\" WHERE $timeFilter GROUP BY \"source\", \"action\""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "renameByName": {
+              "source": "reason"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "requests",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "hot": {
+                        "text": "Hotlink protection",
+                        "index": 0
+                      },
+                      "firewallCustom": {
+                        "text": "Custom rule",
+                        "index": 1
+                      },
+                      "ratelimit": {
+                        "text": "Rate limit",
+                        "index": 2
+                      },
+                      "bic": {
+                        "text": "Browser integrity check",
+                        "index": 3
+                      },
+                      "securitylevel": {
+                        "text": "Security level",
+                        "index": 4
+                      },
+                      "firewallManaged": {
+                        "text": "Managed rules",
+                        "index": 5
+                      },
+                      "l7ddos": {
+                        "text": "DDoS protection",
+                        "index": 6
+                      },
+                      "botFight": {
+                        "text": "Bot fight mode",
+                        "index": 7
+                      },
+                      "validation": {
+                        "text": "Request validation",
+                        "index": 8
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "requests"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "table",
+      "title": "Recent Cloudflare blocks (these never reach boris)",
+      "id": 34,
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 88
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "${DS_ASTRO}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "rawQuery": true,
+          "resultFormat": "table",
+          "query": "SELECT \"source\", \"action\", \"rule\", \"path\", \"country\", \"asn\", \"ua\" FROM \"cf_security\" WHERE $timeFilter ORDER BY time DESC LIMIT 200"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "source": "reason",
+              "asn": "network",
+              "ua": "user agent"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reason"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "hot": {
+                        "text": "Hotlink protection",
+                        "index": 0
+                      },
+                      "firewallCustom": {
+                        "text": "Custom rule",
+                        "index": 1
+                      },
+                      "ratelimit": {
+                        "text": "Rate limit",
+                        "index": 2
+                      },
+                      "bic": {
+                        "text": "Browser integrity check",
+                        "index": 3
+                      },
+                      "securitylevel": {
+                        "text": "Security level",
+                        "index": 4
+                      },
+                      "firewallManaged": {
+                        "text": "Managed rules",
+                        "index": 5
+                      },
+                      "l7ddos": {
+                        "text": "DDoS protection",
+                        "index": 6
+                      },
+                      "botFight": {
+                        "text": "Bot fight mode",
+                        "index": 7
+                      },
+                      "validation": {
+                        "text": "Request validation",
+                        "index": 8
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "network"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "10796": {
+                        "text": "Spectrum (10796)",
+                        "index": 0
+                      },
+                      "11351": {
+                        "text": "Spectrum (11351)",
+                        "index": 1
+                      },
+                      "11427": {
+                        "text": "Spectrum (11427)",
+                        "index": 2
+                      },
+                      "12271": {
+                        "text": "Spectrum (12271)",
+                        "index": 3
+                      },
+                      "12322": {
+                        "text": "Free (FR) (12322)",
+                        "index": 4
+                      },
+                      "132203": {
+                        "text": "Tencent (132203)",
+                        "index": 5
+                      },
+                      "13238": {
+                        "text": "Yandex (13238)",
+                        "index": 6
+                      },
+                      "13335": {
+                        "text": "Cloudflare (13335)",
+                        "index": 7
+                      },
+                      "136907": {
+                        "text": "Huawei Cloud (136907)",
+                        "index": 8
+                      },
+                      "14061": {
+                        "text": "DigitalOcean (14061)",
+                        "index": 9
+                      },
+                      "14593": {
+                        "text": "Starlink (14593)",
+                        "index": 10
+                      },
+                      "14618": {
+                        "text": "Amazon AWS (14618)",
+                        "index": 11
+                      },
+                      "15169": {
+                        "text": "Google (15169)",
+                        "index": 12
+                      },
+                      "16276": {
+                        "text": "OVH (16276)",
+                        "index": 13
+                      },
+                      "16509": {
+                        "text": "Amazon AWS (16509)",
+                        "index": 14
+                      },
+                      "16591": {
+                        "text": "Google Fiber (16591)",
+                        "index": 15
+                      },
+                      "20057": {
+                        "text": "AT&T Mobility (20057)",
+                        "index": 16
+                      },
+                      "20115": {
+                        "text": "Charter (Spectrum) (20115)",
+                        "index": 17
+                      },
+                      "20473": {
+                        "text": "Vultr (20473)",
+                        "index": 18
+                      },
+                      "209": {
+                        "text": "Lumen (CenturyLink) (209)",
+                        "index": 19
+                      },
+                      "212238": {
+                        "text": "Datacamp (212238)",
+                        "index": 20
+                      },
+                      "21928": {
+                        "text": "T-Mobile (21928)",
+                        "index": 21
+                      },
+                      "22394": {
+                        "text": "Verizon Wireless (22394)",
+                        "index": 22
+                      },
+                      "22773": {
+                        "text": "Cox (22773)",
+                        "index": 23
+                      },
+                      "24940": {
+                        "text": "Hetzner (24940)",
+                        "index": 24
+                      },
+                      "2856": {
+                        "text": "BT (2856)",
+                        "index": 25
+                      },
+                      "30036": {
+                        "text": "Mediacom (30036)",
+                        "index": 26
+                      },
+                      "31898": {
+                        "text": "Oracle Cloud (31898)",
+                        "index": 27
+                      },
+                      "3215": {
+                        "text": "Orange (3215)",
+                        "index": 28
+                      },
+                      "32934": {
+                        "text": "Meta (32934)",
+                        "index": 29
+                      },
+                      "3320": {
+                        "text": "Deutsche Telekom (3320)",
+                        "index": 30
+                      },
+                      "33363": {
+                        "text": "Spectrum (33363)",
+                        "index": 31
+                      },
+                      "36352": {
+                        "text": "ColoCrossing (36352)",
+                        "index": 32
+                      },
+                      "37963": {
+                        "text": "Alibaba (37963)",
+                        "index": 33
+                      },
+                      "396982": {
+                        "text": "Google Cloud (396982)",
+                        "index": 34
+                      },
+                      "45102": {
+                        "text": "Alibaba Cloud (45102)",
+                        "index": 35
+                      },
+                      "5089": {
+                        "text": "Virgin Media (5089)",
+                        "index": 36
+                      },
+                      "51167": {
+                        "text": "Contabo (51167)",
+                        "index": 37
+                      },
+                      "5650": {
+                        "text": "Frontier (5650)",
+                        "index": 38
+                      },
+                      "577": {
+                        "text": "Bell Canada (577)",
+                        "index": 39
+                      },
+                      "60068": {
+                        "text": "CDN77 / Datacamp (60068)",
+                        "index": 40
+                      },
+                      "6128": {
+                        "text": "Optimum (6128)",
+                        "index": 41
+                      },
+                      "6167": {
+                        "text": "Verizon Wireless (6167)",
+                        "index": 42
+                      },
+                      "63949": {
+                        "text": "Akamai (Linode) (63949)",
+                        "index": 43
+                      },
+                      "701": {
+                        "text": "Verizon (701)",
+                        "index": 44
+                      },
+                      "7018": {
+                        "text": "AT&T (7018)",
+                        "index": 45
+                      },
+                      "7922": {
+                        "text": "Comcast (Xfinity) (7922)",
+                        "index": 46
+                      },
+                      "8075": {
+                        "text": "Microsoft (8075)",
+                        "index": 47
+                      },
+                      "8100": {
+                        "text": "QuadraNet (8100)",
+                        "index": 48
+                      },
+                      "812": {
+                        "text": "Rogers (812)",
+                        "index": 49
+                      },
+                      "852": {
+                        "text": "Telus (852)",
+                        "index": 50
+                      },
+                      "9009": {
+                        "text": "M247 (9009)",
+                        "index": 51
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rule"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "fe8a4665290a400e949a073025a9f140": {
+                        "text": "Block the builder log",
+                        "index": 0
+                      },
+                      "hot": {
+                        "text": "-",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }

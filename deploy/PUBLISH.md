@@ -110,8 +110,9 @@ either way.
   `(starts_with(http.request.uri.path, "/full/"))`, more than 10 requests per 10 seconds
   per IP → Block for 10 seconds (the free plan allows one rule, 10-second windows only).
 - Security → Settings: **Email Address Obfuscation off** (it is on by default and injects
-  JavaScript), **Hotlink Protection on** (other sites cannot embed the images; direct links
-  and search engines still work), Browser Integrity Check on (default). **Bot Fight Mode
+  JavaScript), **Hotlink Protection off** (switched on at first, off again on 2026-10-27: it blocked the gallery's
+  own thumbnails for visitors coming from the Facebook app, whose in-app browser sends a Facebook
+  referrer with image requests), Browser Integrity Check on (default). **Bot Fight Mode
   stays off**: it injects an inline `<script>` into every HTML page
   (`/cdn-cgi/challenge-platform/.../jsd/main.js`), which the site's
   `Content-Security-Policy: default-src 'none'` blocks, so it would only produce console
@@ -200,7 +201,8 @@ Cloudflare GraphQL --cfstats.py (boris), hourly totals, every 15 min------------
   library only) asks Cloudflare's GraphQL API every 15 minutes for the zone's hourly totals of the
   last 26 hours (`httpRequests1hGroups`) and writes them to InfluxDB: `cf_hourly` (requests,
   cached requests, bytes, cached bytes, threats, page views, unique visitors), `cf_country` and
-  `cf_status`. These include the image requests Cloudflare answered from its cache, which never
+  `cf_status`, plus every request Cloudflare blocked or challenged in the last two hours as `cf_security`
+  (reason, rule, path, country, network, user agent; the free plan's `firewallEventsAdaptive`). These include the image requests Cloudflare answered from its cache, which never
   reach boris. Re-writing an hour replaces it, so the current hour fills in and nothing doubles.
   The free plan has **no per-minute data** (`httpRequests1mGroups` answers "does not have access
   to the path"), which is why an off-the-shelf exporter built on it (lablabs/cloudflare-exporter,
