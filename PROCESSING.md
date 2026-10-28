@@ -12,7 +12,7 @@ hours from the capture data.
 | 1 | Copy the finished JPG, named per the convention | `Finished/` |
 | 2 | Make sure the capture data is there | `Seestar S30 Pro/`, `Dwarf 3/` and `NINA/` (hours are counted from them) |
 | 3 | Only if the automatic choice is wrong: add an override | `Gallery/picks.yaml` |
-| 4 | Check the build | https://astro.home.vandekieft.net/status.html (or the builder log) |
+| 4 | Check the build | https://bortle9.space/status.html (a failed build's log: https://astro.home.vandekieft.net/build-log.html) |
 
 The live gallery is https://astro.home.vandekieft.net (nginx container `astrogallery` on boris).
 

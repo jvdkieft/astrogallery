@@ -72,22 +72,29 @@ def build():
 
 
 def failed_status(log):
-    """Replace status.html with the failed build's log; the rest of the site stays as it was."""
+    """A failed build: status.html (public) says so, build-log.html (home network only, see
+    deploy/nginx.conf) holds the end of the log. The rest of the site stays as it was."""
     out = os.environ.get("GALLERY_OUT") or os.path.join(HERE, "site")
     when = time.strftime("%Y-%m-%d %H:%M %Z")
     tail = html.escape("\n".join(log.splitlines()[-40:]))
-    page = (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
-            f'<meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>Build failed · Astro gallery</title><link rel="stylesheet" href="style.css"></head><body>'
-            f'<header class="site-header"><nav class="crumbs"><a href="index.html">← Gallery</a></nav>'
-            f'<h1>Build failed</h1><p class="sub">{when}. The gallery still shows the last good build; '
-            f'the next change on the share triggers another try.</p></header>'
-            f'<main class="status"><pre class="log">{tail}</pre></main></body></html>\n')
+    head = ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>{t} · bortle9.space</title><link rel="stylesheet" href="style.css"></head><body>'
+            '<header class="site-header"><nav class="crumbs"><a href="index.html">← Gallery</a></nav>')
+    public = (head.format(t="Build failed") +
+              f'<h1>Build failed</h1><p class="sub">{when}. The gallery still shows the last good build; '
+              f'the next change triggers another try.</p></header>'
+              f'<main class="status"><p class="note">Details: <a href="build-log.html">build log</a> '
+              f'(home network only).</p></main></body></html>\n')
+    private = (head.format(t="Build log") +
+               f'<h1>Build log</h1><p class="sub">{when}, last 40 lines.</p></header>'
+               f'<main class="status"><pre class="log">{tail}</pre></main></body></html>\n')
     try:
         os.makedirs(out, exist_ok=True)
-        with open(os.path.join(out, "status.html.tmp"), "w", encoding="utf-8") as f:
-            f.write(page)
-        os.replace(os.path.join(out, "status.html.tmp"), os.path.join(out, "status.html"))
+        for name, text in (("build-log.html", private), ("status.html", public)):
+            with open(os.path.join(out, name + ".tmp"), "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(os.path.join(out, name + ".tmp"), os.path.join(out, name))
     except OSError as e:
         print(f"watch: cannot write status.html: {e}", file=sys.stderr, flush=True)
 

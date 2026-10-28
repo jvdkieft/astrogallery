@@ -26,8 +26,8 @@ the right files on the share.
    - From the PC (scopessd is `E:\`): copy the new JPG from `E:\Finished` to `Y:\Finished`, and the
      night's capture folders from `E:\Seestar S30 Pro`, `E:\Dwarf 3` and `E:\NINA` to the same places under `Y:\`.
      Run `make archive-check` on the Mac later to catch anything you missed.
-3. **Wait a couple of minutes**, then open https://astro.home.vandekieft.net/status.html on the LAN (the "build
-   status" link in every page's footer; blocked from the internet). Check that the build time is recent, there are no
+3. **Wait a couple of minutes**, then open https://bortle9.space/status.html (the "build status" link in
+   every page's footer). Check that the build time is recent, there are no
    warnings, nothing is listed under "Not published", and the target shows the new image and hours.
 4. Open the target's page and look at it.
 
@@ -70,7 +70,7 @@ has the full rules.
 | Hours are too low, or a session-key warning | That night's capture data isn't on the share yet | `make archive` from the Mac, or copy the `Seestar S30 Pro`/`Dwarf 3`/`NINA` folders. |
 | The wrong image is the main one | The automatic choice doesn't match what you want | Add an override in `Gallery/picks.yaml` (below). |
 | A new object lands under "Other" with a raw name | It isn't in the catalogue table in `autopicks.py` | Give it `name`, `kind` and `goal_h` in picks.yaml, or add it to the catalogue (a code change). |
-| status.html says the build failed | Shows the end of the build log | The site stays as it was. Fix the input; the next change triggers a new build. |
+| status.html says the build failed | The end of the log is in build-log.html (home network only: https://astro.home.vandekieft.net/build-log.html) | The site stays as it was. Fix the input; the next change triggers a new build. |
 
 ## Overriding a pick: Gallery/picks.yaml
 

@@ -11,7 +11,7 @@ LAN:  https://astro.home.vandekieft.net --> Nginx Proxy Manager --> astrogallery
 
 What is already in place in this repo (see README "Facing the internet"): metadata-stripped
 `full/` copies, the hardened `deploy/nginx.conf` (no version string, builder files 404,
-`status.html` for private addresses only, `full/` throttled, CSP and the other headers,
+`build-log.html` for private addresses only, `full/` throttled, CSP and the other headers,
 `robots.txt`), a read-only nginx container.
 
 ## Before either route
@@ -93,7 +93,7 @@ public hostnames from step 1 and skip the connector here. The service URL depend
 that connector runs: `http://astrogallery:80` if it is a container on `proxynet` on boris,
 `http://192.168.1.3:8088` from anywhere else on the LAN. Both reach the same nginx, and nginx
 takes the visitor's address from the `X-Forwarded-For` that cloudflared sets (the
-connector's own LAN address is in the trusted range), so `status.html` stays LAN-only
+connector's own LAN address is in the trusted range), so `build-log.html` stays LAN-only
 either way.
 
 ### 3. Cloudflare settings for the zone (done 2026-10-27; here is what and why)
@@ -102,8 +102,9 @@ either way.
   `http://` answered 200 until it was switched), **Minimum TLS 1.2** (default was 1.0), TLS
   1.3 on, **HSTS** on with max-age 6 months, includeSubDomains, no-sniff (the origin sends
   HSTS for a year too; harmless twice).
-- Security → Security rules: a custom rule **"Block the builder status page"**,
-  `(starts_with(http.request.uri.path, "/status"))` → Block. The origin gates `status.html`
+- Security → Security rules: a custom rule **"Block the builder log"**,
+  `(starts_with(http.request.uri.path, "/build-log"))` → Block (until 2026-10-27 this blocked
+  `/status`; the status page is public now). The origin gates `build-log.html`
   by address as well; this one does not depend on the tunnel's `X-Forwarded-For`. And a
   rate-limiting rule **"Throttle full-resolution downloads"**,
   `(starts_with(http.request.uri.path, "/full/"))`, more than 10 requests per 10 seconds
@@ -135,15 +136,15 @@ either way.
 ```
 curl -sI https://bortle9.space/ | grep -i "content-security\|x-served-by\|server:"
    # CSP present; no X-Served-By; Server: cloudflare
-curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status.html      # 403
-curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status           # 403
-curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 192.168.1.5" https://bortle9.space/status.html   # 403
+curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/status.html      # 200 (public)
+curl -s -o /dev/null -w "%{http_code}\n" https://bortle9.space/build-log.html   # 403
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Forwarded-For: 192.168.1.5" https://bortle9.space/build-log.html   # 403
 curl -s https://bortle9.space/nope | grep -o "nginx[^<]*"                       # "nginx", no version
 curl -s https://bortle9.space/robots.txt      # Cloudflare's content-signal block, then the origin's Disallow lines
 dig +short bortle9.space     # Cloudflare addresses (104.x / 172.67.x), never the home IP
 ```
 
-On the LAN `https://astro.home.vandekieft.net/status.html` still answers 200 through NPM.
+On the LAN `https://astro.home.vandekieft.net/build-log.html` answers 200 through NPM (404 until a build fails).
 
 ### Rollback
 
@@ -245,4 +246,5 @@ Delete `stats.env` on boris, `docker rm -f astrogallery-stats astrogallery-cfsta
 Northern-hemisphere targets, a Bortle 8.6 sky (it is in the site name), the region: Central Iowa
 suburbs (the about page says so), the nights the scopes were out and the equipment and software
 in the file names. No name, no town or address, no time zone (the public
-footer carries the date only; the build time with its zone is on the LAN-only status page).
+footer carries the date only; the public status page shows the build time with its zone, which the
+region on the about page gives away anyway).

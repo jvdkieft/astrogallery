@@ -779,8 +779,21 @@ both; the toggle above the image switches.</li>
     return page("How these are made · bortle9.space", body, generated)
 
 
-def status_html(targets, images, unnamed, generated):
-    """status.html: what this build did, so it can be checked without the builder log."""
+def share_relative(msg, paths):
+    """A warning with the share's own location cut off (status.html is public): '/data/Finished/x.jpg'
+    -> 'Finished/x.jpg'. Covers the root and every input folder, either slash."""
+    roots = {os.path.dirname(os.path.normpath(paths["finished"]))}  # the share root
+    if paths.get("source"):
+        roots.add(os.path.normpath(paths["source"]))  # the same folder unless given separately
+    for r in sorted((r for r in roots if r and r not in (".", os.sep)), key=len, reverse=True):
+        for form in {r, r.replace("\\", "/"), r.replace("/", "\\")}:
+            msg = msg.replace(form.rstrip("/\\") + "/", "").replace(form.rstrip("/\\") + "\\", "")
+    return msg
+
+
+def status_html(targets, images, unnamed, generated, paths=None):
+    """status.html: what this build did. Public: share paths are cut from the warnings, and a failed
+    build's log goes to build-log.html (home network only, see deploy/nginx.conf)."""
     version = os.environ.get("GALLERY_VERSION")
     hours = sum(t["hours"] for t in targets)
     parts = [f"""<header class="site-header">
@@ -792,13 +805,13 @@ def status_html(targets, images, unnamed, generated):
 <main class="status">"""]
     if WARNINGS:
         parts.append(f"<section><h2>Warnings ({len(WARNINGS)})</h2><ul class=\"warn\">"
-                     + "".join(f"<li>{esc(w)}</li>" for w in WARNINGS) + "</ul></section>")
+                     + "".join(f"<li>{esc(share_relative(w, paths) if paths else w)}</li>" for w in WARNINGS) + "</ul></section>")
     else:
         parts.append("<section><h2>Warnings</h2><p class=\"ok\">None.</p></section>")
     if unnamed:
         parts.append(f"<section><h2>Not published: names the gallery cannot read ({len(unnamed)})</h2>"
-                     "<p class=\"note\">These JPGs in Finished/ do not follow the naming in PROCESSING.md, "
-                     "so they are not on the site. Rename them, or use them from picks.yaml.</p><ul class=\"files\">"
+                     "<p class=\"note\">These finished JPGs don't follow the file naming the gallery reads, "
+                     "so they are not on the site yet.</p><ul class=\"files\">"
                      + "".join(f"<li>{esc(n)}</li>" for n in unnamed) + "</ul></section>")
     rows = "".join(
         f'<tr><td><a href="{esc(t["id"])}.html">{esc(t["name"])}</a></td>'
@@ -808,7 +821,7 @@ def status_html(targets, images, unnamed, generated):
     parts.append(f"""<section><h2>Targets</h2><div class="table-wrap"><table class="sessions">
 <thead><tr><th>Target</th><th>Main image</th><th class="num">Hours / goal</th><th class="num">Nights</th></tr></thead>
 <tbody>{rows}</tbody></table></div></section></main>""")
-    return page("Build status · Astro gallery", "\n".join(parts), generated[:10])
+    return page("Build status · bortle9.space", "\n".join(parts), generated[:10])
 
 
 # ---------------------------------------------------------------- main
@@ -911,10 +924,10 @@ def main():
     unnamed = [n for n in finished_jpgs(paths["finished"]) if n not in used and not autopicks.parse(n)]
 
     now = dt.datetime.now().astimezone()
-    generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html (LAN only)
-    day = now.strftime("%Y-%m-%d")  # the public footer: a time zone would say where the builder is
+    generated = now.strftime("%Y-%m-%d %H:%M %Z")  # status.html
+    day = now.strftime("%Y-%m-%d")  # the footers carry the date only
     ordered = [t for g in GROUP_ORDER for t in targets if t["group"] == g]
-    keep = {"index.html", "about.html", "status.html", "style.css", ".manifest.json", "img", "full"}
+    keep = {"index.html", "about.html", "status.html", "build-log.html", "style.css", ".manifest.json", "img", "full"}
     write(os.path.join(a.out, "index.html"), index_html(ordered, images, day, now.date()))
     for n, t in enumerate(ordered):
         prev = ordered[n - 1] if n else None
@@ -922,7 +935,7 @@ def main():
         write(os.path.join(a.out, f"{t['id']}.html"), target_html(t, prev, nxt, images, day))
         keep.add(f"{t['id']}.html")
     write(os.path.join(a.out, "about.html"), about_html(ordered, day))
-    write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated))
+    write(os.path.join(a.out, "status.html"), status_html(ordered, images, unnamed, generated, paths))
     css = os.path.join(a.out, "style.css")
     shutil.copyfile(os.path.join(HERE, "static", "style.css"), css + ".tmp")
     os.replace(css + ".tmp", css)

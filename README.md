@@ -99,10 +99,11 @@ are ignored by the automatic picks (picks.yaml can still use them).
   toggle, other versions, and the session table.
 - `img/<id>-<role>-600.jpg` and `-2560.jpg`: progressive sRGB JPEGs. `full/<id>-<role>.jpg`: a byte
   copy of the Finished JPG, offered as a download under its original name.
-- `status.html`: the last build's time, deployed commit, warnings, the `Finished/` JPGs whose names
-  could not be read, and each target's main image and hours. Linked from every footer; a failed
-  build replaces it with the end of its log. A JPG that cannot be read is left out with a warning
-  (the previous image stays if there was one) instead of failing the build.
+- `status.html` (public): the last build's time, deployed commit, warnings (with share paths cut
+  off), the `Finished/` JPGs whose names could not be read, and each target's main image and hours.
+  Linked from every footer. A failed build replaces it with a short notice and writes the end of
+  its log to `build-log.html`, which only the home network can open. A JPG that cannot be read is
+  left out with a warning (the previous image stays if there was one) instead of failing the build.
 - `.manifest.json`: source mtime and size per image; only changed sources are re-rendered.
   Bump `GEN_VERSION` in gallery.py to force a full rebuild.
 
@@ -144,9 +145,8 @@ only thing to protect. What this repo does for that:
 - `full/` copies are the Finished JPG with its metadata stripped (`strip_metadata` in gallery.py):
   Exif, XMP, IPTC and comments go; picture data, ICC profile and orientation stay. A JPG exported
   with a GPS tag or a camera serial in it does not publish them. The web derivatives never had any.
-- `deploy/nginx.conf`: no version string, `.manifest.json` and `*.tmp` are 404, `status.html`
-  (share paths in warnings, builder log after a failed build) is only served to addresses on the
-  home network, `full/` downloads are limited to two at a time per address at 2 MB/s after the first MB (and
+- `deploy/nginx.conf`: no version string, `.manifest.json` and `*.tmp` are 404, `build-log.html`
+  (the builder log after a failed build) is only served to addresses on the home network, `full/` downloads are limited to two at a time per address at 2 MB/s after the first MB (and
   robots.txt asks crawlers to skip them), and a
   Content-Security-Policy allows nothing to run. The
   client address is taken from `X-Forwarded-For` when the request came through a proxy on a
