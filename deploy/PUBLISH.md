@@ -239,6 +239,14 @@ Cloudflare GraphQL --cfstats.py (boris), hourly totals, every 15 min------------
    Cloudflare dashboard for the same day (verify once; if they do not, the exporter's minute
    window and the hour boundaries disagree; `docker logs astrogallery-cfstats` shows each round).
 
+The visitor panels (page views, downloads, location, source, device, targets) count only
+browsers (device `mobile` or `desktop`) and leave out the hosting and crawler networks listed in
+the hidden dashboard variable `hosting` (Dashboard settings → Variables, AS numbers separated by
+`|`). In the first days about nine in ten "page views" came from crawlers on cloud, hosting and
+residential-proxy networks that read every page with a browser user agent. When a new one shows
+up (one network, one city, every page once, no referrer), add its number to that variable. The
+network, probe, status and user-agent panels are unfiltered.
+
 ### Turning it off
 
 Delete `stats.env` on boris, `docker rm -f astrogallery-stats astrogallery-cfstats`, and

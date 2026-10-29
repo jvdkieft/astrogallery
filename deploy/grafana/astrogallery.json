@@ -85,6 +85,24 @@
           "value": "US"
         },
         "hide": 0
+      },
+      {
+        "name": "hosting",
+        "type": "constant",
+        "hide": 2,
+        "query": "8075|8100|9009|13238|13335|14061|14618|14956|15169|16276|16509|19318|20473|24560|24940|31898|32613|32934|36352|37963|45090|45102|47007|47583|48090|48282|51167|55836|60068|60781|63949|132203|133481|134375|136907|197204|204646|209334|211298|212238|214996|215599|218785|329184|396073|396982",
+        "label": "Hosting and crawler networks (AS numbers left out of visitor counts)",
+        "current": {
+          "text": "8075|8100|9009|13238|13335|14061|14618|14956|15169|16276|16509|19318|20473|24560|24940|31898|32613|32934|36352|37963|45090|45102|47007|47583|48090|48282|51167|55836|60068|60781|63949|132203|133481|134375|136907|197204|204646|209334|211298|212238|214996|215599|218785|329184|396073|396982",
+          "value": "8075|8100|9009|13238|13335|14061|14618|14956|15169|16276|16509|19318|20473|24560|24940|31898|32613|32934|36352|37963|45090|45102|47007|47583|48090|48282|51167|55836|60068|60781|63949|132203|133481|134375|136907|197204|204646|209334|211298|212238|214996|215599|218785|329184|396073|396982"
+        },
+        "options": [
+          {
+            "text": "8075|8100|9009|13238|13335|14061|14618|14956|15169|16276|16509|19318|20473|24560|24940|31898|32613|32934|36352|37963|45090|45102|47007|47583|48090|48282|51167|55836|60068|60781|63949|132203|133481|134375|136907|197204|204646|209334|211298|212238|214996|215599|218785|329184|396073|396982",
+            "value": "8075|8100|9009|13238|13335|14061|14618|14956|15169|16276|16509|19318|20473|24560|24940|31898|32613|32934|36352|37963|45090|45102|47007|47583|48090|48282|51167|55836|60068|60781|63949|132203|133481|134375|136907|197204|204646|209334|211298|212238|214996|215599|218785|329184|396073|396982",
+            "selected": true
+          }
+        ]
       }
     ]
   },
@@ -94,7 +112,7 @@
   "panels": [
     {
       "type": "row",
-      "title": "Visitors (origin access log, home network excluded)",
+      "title": "Visitors (origin access log; home network, bots and hosting networks left out)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -124,7 +142,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter"
         }
       ],
       "options": {
@@ -167,7 +185,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'index' AND $timeFilter"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'index' AND $timeFilter"
         }
       ],
       "options": {
@@ -210,7 +228,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter"
         }
       ],
       "options": {
@@ -383,21 +401,21 @@
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "target pages",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'page' AND $timeFilter GROUP BY time(1h) fill(0)"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'page' AND $timeFilter GROUP BY time(1h) fill(0)"
         },
         {
           "refId": "B",
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "gallery index",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'index' AND $timeFilter GROUP BY time(1h) fill(0)"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'index' AND $timeFilter GROUP BY time(1h) fill(0)"
         },
         {
           "refId": "C",
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "full-res downloads",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY time(1h) fill(0)"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY time(1h) fill(0)"
         }
       ],
       "options": {
@@ -447,7 +465,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter GROUP BY \"country\""
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter GROUP BY \"country\""
         }
       ],
       "transformations": [
@@ -521,7 +539,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"country\" =~ /^$country$/ AND $timeFilter GROUP BY \"country\", \"region\""
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"country\" =~ /^$country$/ AND $timeFilter GROUP BY \"country\", \"region\""
         }
       ],
       "transformations": [
@@ -593,7 +611,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"country\" =~ /^$country$/ AND $timeFilter GROUP BY \"country\", \"region\", \"city\""
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"country\" =~ /^$country$/ AND $timeFilter GROUP BY \"country\", \"region\", \"city\""
         }
       ],
       "transformations": [
@@ -777,147 +795,171 @@
                       },
                       "20057": {
                         "text": "AT&T Mobility (20057)",
-                        "index": 16
+                        "index": 17
                       },
                       "20115": {
                         "text": "Charter (Spectrum) (20115)",
-                        "index": 17
+                        "index": 18
                       },
                       "20473": {
                         "text": "Vultr (20473)",
-                        "index": 18
+                        "index": 19
                       },
                       "209": {
                         "text": "Lumen (CenturyLink) (209)",
-                        "index": 19
+                        "index": 20
                       },
                       "212238": {
                         "text": "Datacamp (212238)",
-                        "index": 20
+                        "index": 21
                       },
                       "21928": {
                         "text": "T-Mobile (21928)",
-                        "index": 21
+                        "index": 22
                       },
                       "22394": {
                         "text": "Verizon Wireless (22394)",
-                        "index": 22
+                        "index": 23
                       },
                       "22773": {
                         "text": "Cox (22773)",
-                        "index": 23
+                        "index": 24
                       },
                       "24940": {
                         "text": "Hetzner (24940)",
-                        "index": 24
+                        "index": 26
                       },
                       "2856": {
                         "text": "BT (2856)",
-                        "index": 25
+                        "index": 27
                       },
                       "30036": {
                         "text": "Mediacom (30036)",
-                        "index": 26
+                        "index": 28
                       },
                       "31898": {
                         "text": "Oracle Cloud (31898)",
-                        "index": 27
+                        "index": 29
                       },
                       "3215": {
                         "text": "Orange (3215)",
-                        "index": 28
+                        "index": 30
                       },
                       "32934": {
                         "text": "Meta (32934)",
-                        "index": 29
+                        "index": 31
                       },
                       "3320": {
                         "text": "Deutsche Telekom (3320)",
-                        "index": 30
+                        "index": 32
                       },
                       "33363": {
                         "text": "Spectrum (33363)",
-                        "index": 31
+                        "index": 33
                       },
                       "36352": {
                         "text": "ColoCrossing (36352)",
-                        "index": 32
+                        "index": 35
                       },
                       "37963": {
                         "text": "Alibaba (37963)",
-                        "index": 33
+                        "index": 36
                       },
                       "396982": {
                         "text": "Google Cloud (396982)",
-                        "index": 34
+                        "index": 37
                       },
                       "45102": {
                         "text": "Alibaba Cloud (45102)",
-                        "index": 35
+                        "index": 39
                       },
                       "5089": {
                         "text": "Virgin Media (5089)",
-                        "index": 36
+                        "index": 40
                       },
                       "51167": {
                         "text": "Contabo (51167)",
-                        "index": 37
+                        "index": 41
                       },
                       "5650": {
                         "text": "Frontier (5650)",
-                        "index": 38
+                        "index": 43
                       },
                       "577": {
                         "text": "Bell Canada (577)",
-                        "index": 39
+                        "index": 44
                       },
                       "60068": {
                         "text": "CDN77 / Datacamp (60068)",
-                        "index": 40
+                        "index": 45
                       },
                       "6128": {
                         "text": "Optimum (6128)",
-                        "index": 41
+                        "index": 47
                       },
                       "6167": {
                         "text": "Verizon Wireless (6167)",
-                        "index": 42
+                        "index": 48
                       },
                       "63949": {
                         "text": "Akamai (Linode) (63949)",
-                        "index": 43
+                        "index": 49
                       },
                       "701": {
                         "text": "Verizon (701)",
-                        "index": 44
+                        "index": 50
                       },
                       "7018": {
                         "text": "AT&T (7018)",
-                        "index": 45
+                        "index": 51
                       },
                       "7922": {
                         "text": "Comcast (Xfinity) (7922)",
-                        "index": 46
+                        "index": 52
                       },
                       "8075": {
                         "text": "Microsoft (8075)",
-                        "index": 47
+                        "index": 53
                       },
                       "8100": {
                         "text": "QuadraNet (8100)",
-                        "index": 48
+                        "index": 54
                       },
                       "812": {
                         "text": "Rogers (812)",
-                        "index": 49
+                        "index": 55
                       },
                       "852": {
                         "text": "Telus (852)",
-                        "index": 50
+                        "index": 56
                       },
                       "9009": {
                         "text": "M247 (9009)",
-                        "index": 51
+                        "index": 57
+                      },
+                      "19318": {
+                        "text": "Interserver (19318)",
+                        "index": 16
+                      },
+                      "24560": {
+                        "text": "Bharti Airtel (24560)",
+                        "index": 25
+                      },
+                      "55836": {
+                        "text": "Reliance Jio (55836)",
+                        "index": 42
+                      },
+                      "60781": {
+                        "text": "LeaseWeb NL (60781)",
+                        "index": 46
+                      },
+                      "3356": {
+                        "text": "Lumen (3356)",
+                        "index": 34
+                      },
+                      "45090": {
+                        "text": "Tencent (45090)",
+                        "index": 38
                       }
                     }
                   }
@@ -945,7 +987,7 @@
     },
     {
       "type": "stat",
-      "title": "Requests from data centers (clouds, hosters, crawlers)",
+      "title": "Requests from hosting and crawler networks",
       "id": 17,
       "gridPos": {
         "h": 5,
@@ -962,7 +1004,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"asn\" =~ /^(132203|13238|13335|136907|14061|14618|15169|16276|16509|20473|212238|24940|31898|32934|36352|37963|396982|45102|51167|60068|63949|8075|8100|9009)$/ AND $timeFilter"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND \"asn\" =~ /^($hosting)$/ AND $timeFilter"
         }
       ],
       "options": {
@@ -988,7 +1030,7 @@
     },
     {
       "type": "stat",
-      "title": "Page views from data centers",
+      "title": "Page views left out (hosting and crawler networks)",
       "id": 18,
       "gridPos": {
         "h": 5,
@@ -1005,7 +1047,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "time_series",
-          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"asn\" =~ /^(132203|13238|13335|136907|14061|14618|15169|16276|16509|20473|212238|24940|31898|32934|36352|37963|396982|45102|51167|60068|63949|8075|8100|9009)$/ AND $timeFilter"
+          "query": "SELECT count(\"bytes\") FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"asn\" =~ /^($hosting)$/ AND $timeFilter"
         }
       ],
       "options": {
@@ -1048,7 +1090,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"ref_site\" <> '-' AND \"ref_site\" !~ /bortle9\\.space$/ AND $timeFilter GROUP BY \"ref_site\""
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"ref_site\" <> '-' AND \"ref_site\" !~ /bortle9\\.space$/ AND $timeFilter GROUP BY \"ref_site\""
         }
       ],
       "transformations": [
@@ -1119,7 +1161,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter GROUP BY \"agent\""
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND $timeFilter GROUP BY \"agent\""
         }
       ],
       "transformations": [
@@ -1261,7 +1303,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'page' AND $timeFilter GROUP BY \"page\""
+          "query": "SELECT count(\"bytes\") AS \"views\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND \"kind\" = 'page' AND $timeFilter GROUP BY \"page\""
         }
       ],
       "transformations": [
@@ -1331,7 +1373,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT count(\"bytes\") AS \"downloads\" FROM \"access\" WHERE \"lan\" = '0' AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY \"page\""
+          "query": "SELECT count(\"bytes\") AS \"downloads\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND \"status\" = '200' AND \"kind\" = 'full' AND $timeFilter GROUP BY \"page\""
         }
       ],
       "transformations": [
@@ -1401,7 +1443,7 @@
           "refId": "A",
           "rawQuery": true,
           "resultFormat": "table",
-          "query": "SELECT \"referer\", \"page\", \"country\" FROM \"access\" WHERE \"lan\" = '0' AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"referer\" <> '' AND \"referer\" !~ /bortle9\\.space/ AND $timeFilter ORDER BY time DESC LIMIT 200"
+          "query": "SELECT \"referer\", \"page\", \"country\" FROM \"access\" WHERE \"lan\" = '0' AND \"agent\" =~ /^(mobile|desktop)$/ AND \"asn\" !~ /^($hosting)$/ AND (\"status\" = '200' OR \"status\" = '304') AND (\"kind\" = 'page' OR \"kind\" = 'index') AND \"referer\" <> '' AND \"referer\" !~ /bortle9\\.space/ AND $timeFilter ORDER BY time DESC LIMIT 200"
         }
       ],
       "options": {
@@ -1755,147 +1797,171 @@
                       },
                       "20057": {
                         "text": "AT&T Mobility (20057)",
-                        "index": 16
+                        "index": 17
                       },
                       "20115": {
                         "text": "Charter (Spectrum) (20115)",
-                        "index": 17
+                        "index": 18
                       },
                       "20473": {
                         "text": "Vultr (20473)",
-                        "index": 18
+                        "index": 19
                       },
                       "209": {
                         "text": "Lumen (CenturyLink) (209)",
-                        "index": 19
+                        "index": 20
                       },
                       "212238": {
                         "text": "Datacamp (212238)",
-                        "index": 20
+                        "index": 21
                       },
                       "21928": {
                         "text": "T-Mobile (21928)",
-                        "index": 21
+                        "index": 22
                       },
                       "22394": {
                         "text": "Verizon Wireless (22394)",
-                        "index": 22
+                        "index": 23
                       },
                       "22773": {
                         "text": "Cox (22773)",
-                        "index": 23
+                        "index": 24
                       },
                       "24940": {
                         "text": "Hetzner (24940)",
-                        "index": 24
+                        "index": 26
                       },
                       "2856": {
                         "text": "BT (2856)",
-                        "index": 25
+                        "index": 27
                       },
                       "30036": {
                         "text": "Mediacom (30036)",
-                        "index": 26
+                        "index": 28
                       },
                       "31898": {
                         "text": "Oracle Cloud (31898)",
-                        "index": 27
+                        "index": 29
                       },
                       "3215": {
                         "text": "Orange (3215)",
-                        "index": 28
+                        "index": 30
                       },
                       "32934": {
                         "text": "Meta (32934)",
-                        "index": 29
+                        "index": 31
                       },
                       "3320": {
                         "text": "Deutsche Telekom (3320)",
-                        "index": 30
+                        "index": 32
                       },
                       "33363": {
                         "text": "Spectrum (33363)",
-                        "index": 31
+                        "index": 33
                       },
                       "36352": {
                         "text": "ColoCrossing (36352)",
-                        "index": 32
+                        "index": 35
                       },
                       "37963": {
                         "text": "Alibaba (37963)",
-                        "index": 33
+                        "index": 36
                       },
                       "396982": {
                         "text": "Google Cloud (396982)",
-                        "index": 34
+                        "index": 37
                       },
                       "45102": {
                         "text": "Alibaba Cloud (45102)",
-                        "index": 35
+                        "index": 39
                       },
                       "5089": {
                         "text": "Virgin Media (5089)",
-                        "index": 36
+                        "index": 40
                       },
                       "51167": {
                         "text": "Contabo (51167)",
-                        "index": 37
+                        "index": 41
                       },
                       "5650": {
                         "text": "Frontier (5650)",
-                        "index": 38
+                        "index": 43
                       },
                       "577": {
                         "text": "Bell Canada (577)",
-                        "index": 39
+                        "index": 44
                       },
                       "60068": {
                         "text": "CDN77 / Datacamp (60068)",
-                        "index": 40
+                        "index": 45
                       },
                       "6128": {
                         "text": "Optimum (6128)",
-                        "index": 41
+                        "index": 47
                       },
                       "6167": {
                         "text": "Verizon Wireless (6167)",
-                        "index": 42
+                        "index": 48
                       },
                       "63949": {
                         "text": "Akamai (Linode) (63949)",
-                        "index": 43
+                        "index": 49
                       },
                       "701": {
                         "text": "Verizon (701)",
-                        "index": 44
+                        "index": 50
                       },
                       "7018": {
                         "text": "AT&T (7018)",
-                        "index": 45
+                        "index": 51
                       },
                       "7922": {
                         "text": "Comcast (Xfinity) (7922)",
-                        "index": 46
+                        "index": 52
                       },
                       "8075": {
                         "text": "Microsoft (8075)",
-                        "index": 47
+                        "index": 53
                       },
                       "8100": {
                         "text": "QuadraNet (8100)",
-                        "index": 48
+                        "index": 54
                       },
                       "812": {
                         "text": "Rogers (812)",
-                        "index": 49
+                        "index": 55
                       },
                       "852": {
                         "text": "Telus (852)",
-                        "index": 50
+                        "index": 56
                       },
                       "9009": {
                         "text": "M247 (9009)",
-                        "index": 51
+                        "index": 57
+                      },
+                      "19318": {
+                        "text": "Interserver (19318)",
+                        "index": 16
+                      },
+                      "24560": {
+                        "text": "Bharti Airtel (24560)",
+                        "index": 25
+                      },
+                      "55836": {
+                        "text": "Reliance Jio (55836)",
+                        "index": 42
+                      },
+                      "60781": {
+                        "text": "LeaseWeb NL (60781)",
+                        "index": 46
+                      },
+                      "3356": {
+                        "text": "Lumen (3356)",
+                        "index": 34
+                      },
+                      "45090": {
+                        "text": "Tencent (45090)",
+                        "index": 38
                       }
                     }
                   }
@@ -2039,147 +2105,171 @@
                       },
                       "20057": {
                         "text": "AT&T Mobility (20057)",
-                        "index": 16
+                        "index": 17
                       },
                       "20115": {
                         "text": "Charter (Spectrum) (20115)",
-                        "index": 17
+                        "index": 18
                       },
                       "20473": {
                         "text": "Vultr (20473)",
-                        "index": 18
+                        "index": 19
                       },
                       "209": {
                         "text": "Lumen (CenturyLink) (209)",
-                        "index": 19
+                        "index": 20
                       },
                       "212238": {
                         "text": "Datacamp (212238)",
-                        "index": 20
+                        "index": 21
                       },
                       "21928": {
                         "text": "T-Mobile (21928)",
-                        "index": 21
+                        "index": 22
                       },
                       "22394": {
                         "text": "Verizon Wireless (22394)",
-                        "index": 22
+                        "index": 23
                       },
                       "22773": {
                         "text": "Cox (22773)",
-                        "index": 23
+                        "index": 24
                       },
                       "24940": {
                         "text": "Hetzner (24940)",
-                        "index": 24
+                        "index": 26
                       },
                       "2856": {
                         "text": "BT (2856)",
-                        "index": 25
+                        "index": 27
                       },
                       "30036": {
                         "text": "Mediacom (30036)",
-                        "index": 26
+                        "index": 28
                       },
                       "31898": {
                         "text": "Oracle Cloud (31898)",
-                        "index": 27
+                        "index": 29
                       },
                       "3215": {
                         "text": "Orange (3215)",
-                        "index": 28
+                        "index": 30
                       },
                       "32934": {
                         "text": "Meta (32934)",
-                        "index": 29
+                        "index": 31
                       },
                       "3320": {
                         "text": "Deutsche Telekom (3320)",
-                        "index": 30
+                        "index": 32
                       },
                       "33363": {
                         "text": "Spectrum (33363)",
-                        "index": 31
+                        "index": 33
                       },
                       "36352": {
                         "text": "ColoCrossing (36352)",
-                        "index": 32
+                        "index": 35
                       },
                       "37963": {
                         "text": "Alibaba (37963)",
-                        "index": 33
+                        "index": 36
                       },
                       "396982": {
                         "text": "Google Cloud (396982)",
-                        "index": 34
+                        "index": 37
                       },
                       "45102": {
                         "text": "Alibaba Cloud (45102)",
-                        "index": 35
+                        "index": 39
                       },
                       "5089": {
                         "text": "Virgin Media (5089)",
-                        "index": 36
+                        "index": 40
                       },
                       "51167": {
                         "text": "Contabo (51167)",
-                        "index": 37
+                        "index": 41
                       },
                       "5650": {
                         "text": "Frontier (5650)",
-                        "index": 38
+                        "index": 43
                       },
                       "577": {
                         "text": "Bell Canada (577)",
-                        "index": 39
+                        "index": 44
                       },
                       "60068": {
                         "text": "CDN77 / Datacamp (60068)",
-                        "index": 40
+                        "index": 45
                       },
                       "6128": {
                         "text": "Optimum (6128)",
-                        "index": 41
+                        "index": 47
                       },
                       "6167": {
                         "text": "Verizon Wireless (6167)",
-                        "index": 42
+                        "index": 48
                       },
                       "63949": {
                         "text": "Akamai (Linode) (63949)",
-                        "index": 43
+                        "index": 49
                       },
                       "701": {
                         "text": "Verizon (701)",
-                        "index": 44
+                        "index": 50
                       },
                       "7018": {
                         "text": "AT&T (7018)",
-                        "index": 45
+                        "index": 51
                       },
                       "7922": {
                         "text": "Comcast (Xfinity) (7922)",
-                        "index": 46
+                        "index": 52
                       },
                       "8075": {
                         "text": "Microsoft (8075)",
-                        "index": 47
+                        "index": 53
                       },
                       "8100": {
                         "text": "QuadraNet (8100)",
-                        "index": 48
+                        "index": 54
                       },
                       "812": {
                         "text": "Rogers (812)",
-                        "index": 49
+                        "index": 55
                       },
                       "852": {
                         "text": "Telus (852)",
-                        "index": 50
+                        "index": 56
                       },
                       "9009": {
                         "text": "M247 (9009)",
-                        "index": 51
+                        "index": 57
+                      },
+                      "19318": {
+                        "text": "Interserver (19318)",
+                        "index": 16
+                      },
+                      "24560": {
+                        "text": "Bharti Airtel (24560)",
+                        "index": 25
+                      },
+                      "55836": {
+                        "text": "Reliance Jio (55836)",
+                        "index": 42
+                      },
+                      "60781": {
+                        "text": "LeaseWeb NL (60781)",
+                        "index": 46
+                      },
+                      "3356": {
+                        "text": "Lumen (3356)",
+                        "index": 34
+                      },
+                      "45090": {
+                        "text": "Tencent (45090)",
+                        "index": 38
                       }
                     }
                   }
@@ -2581,7 +2671,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; country, state/region and city come from Cloudflare's location headers (logged from 2026-10-27 on; earlier views have country only). The Country picker at the top filters the state and city tables. The network is the visitor's AS number (added by a Cloudflare transform rule, logged from 2026-10-27 on); common ones are named, the rest show as a number you can look up. Source is the referring site; device is bot, mobile or desktop, guessed from the browser's user agent (bots that pretend to be browsers count as desktop). `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
+        "content": "**Origin** panels come from nginx on boris: every request that reached the server, minus the home network (`lan = 1`). The visitor panels (page views, downloads, country/state/city, source, device, targets, referrers) count only browsers (device mobile or desktop, so self-declared bots drop out, as do the untagged first hours on 2026-10-27, mostly launch testing) and leave out a list of hosting and crawler networks, kept in the hidden dashboard variable `hosting` (Dashboard settings → Variables). Crawlers there read every page with a browser-like user agent, so counting them buried the real views. The network, probe, status and user-agent panels still show everything. HTML is never cached by Cloudflare, so page views here are complete. Image requests are mostly answered by Cloudflare's cache and show up only in the **edge** panels.\n\nNo visitor addresses are stored; country, state/region and city come from Cloudflare's location headers (logged from 2026-10-27 on; earlier views have country only). The Country picker at the top filters the state and city tables. The network is the visitor's AS number (added by a Cloudflare transform rule, logged from 2026-10-27 on); common ones are named, the rest show as a number you can look up. Source is the referring site; device is bot, mobile or desktop, guessed from the browser's user agent (bots that pretend to be browsers count as desktop). `page` is only set when a page or full-res file was actually served (200, or 304 when a returning visitor's browser revalidates a page), so scanners probing for `/wp-login.php` end up in the status chart, not in the target table.\n\nEdge numbers are Cloudflare's hourly zone totals (the free plan has no finer data), refreshed every 15 minutes by `cfstats.py`; the current hour fills in as it goes. Unique visitors are counted per hour by Cloudflare, so summing hours counts a visitor once per hour they were active. Compare with Analytics → Traffic in the Cloudflare dashboard once; they should agree."
       }
     },
     {
@@ -2882,147 +2972,171 @@
                       },
                       "20057": {
                         "text": "AT&T Mobility (20057)",
-                        "index": 16
+                        "index": 17
                       },
                       "20115": {
                         "text": "Charter (Spectrum) (20115)",
-                        "index": 17
+                        "index": 18
                       },
                       "20473": {
                         "text": "Vultr (20473)",
-                        "index": 18
+                        "index": 19
                       },
                       "209": {
                         "text": "Lumen (CenturyLink) (209)",
-                        "index": 19
+                        "index": 20
                       },
                       "212238": {
                         "text": "Datacamp (212238)",
-                        "index": 20
+                        "index": 21
                       },
                       "21928": {
                         "text": "T-Mobile (21928)",
-                        "index": 21
+                        "index": 22
                       },
                       "22394": {
                         "text": "Verizon Wireless (22394)",
-                        "index": 22
+                        "index": 23
                       },
                       "22773": {
                         "text": "Cox (22773)",
-                        "index": 23
+                        "index": 24
                       },
                       "24940": {
                         "text": "Hetzner (24940)",
-                        "index": 24
+                        "index": 26
                       },
                       "2856": {
                         "text": "BT (2856)",
-                        "index": 25
+                        "index": 27
                       },
                       "30036": {
                         "text": "Mediacom (30036)",
-                        "index": 26
+                        "index": 28
                       },
                       "31898": {
                         "text": "Oracle Cloud (31898)",
-                        "index": 27
+                        "index": 29
                       },
                       "3215": {
                         "text": "Orange (3215)",
-                        "index": 28
+                        "index": 30
                       },
                       "32934": {
                         "text": "Meta (32934)",
-                        "index": 29
+                        "index": 31
                       },
                       "3320": {
                         "text": "Deutsche Telekom (3320)",
-                        "index": 30
+                        "index": 32
                       },
                       "33363": {
                         "text": "Spectrum (33363)",
-                        "index": 31
+                        "index": 33
                       },
                       "36352": {
                         "text": "ColoCrossing (36352)",
-                        "index": 32
+                        "index": 35
                       },
                       "37963": {
                         "text": "Alibaba (37963)",
-                        "index": 33
+                        "index": 36
                       },
                       "396982": {
                         "text": "Google Cloud (396982)",
-                        "index": 34
+                        "index": 37
                       },
                       "45102": {
                         "text": "Alibaba Cloud (45102)",
-                        "index": 35
+                        "index": 39
                       },
                       "5089": {
                         "text": "Virgin Media (5089)",
-                        "index": 36
+                        "index": 40
                       },
                       "51167": {
                         "text": "Contabo (51167)",
-                        "index": 37
+                        "index": 41
                       },
                       "5650": {
                         "text": "Frontier (5650)",
-                        "index": 38
+                        "index": 43
                       },
                       "577": {
                         "text": "Bell Canada (577)",
-                        "index": 39
+                        "index": 44
                       },
                       "60068": {
                         "text": "CDN77 / Datacamp (60068)",
-                        "index": 40
+                        "index": 45
                       },
                       "6128": {
                         "text": "Optimum (6128)",
-                        "index": 41
+                        "index": 47
                       },
                       "6167": {
                         "text": "Verizon Wireless (6167)",
-                        "index": 42
+                        "index": 48
                       },
                       "63949": {
                         "text": "Akamai (Linode) (63949)",
-                        "index": 43
+                        "index": 49
                       },
                       "701": {
                         "text": "Verizon (701)",
-                        "index": 44
+                        "index": 50
                       },
                       "7018": {
                         "text": "AT&T (7018)",
-                        "index": 45
+                        "index": 51
                       },
                       "7922": {
                         "text": "Comcast (Xfinity) (7922)",
-                        "index": 46
+                        "index": 52
                       },
                       "8075": {
                         "text": "Microsoft (8075)",
-                        "index": 47
+                        "index": 53
                       },
                       "8100": {
                         "text": "QuadraNet (8100)",
-                        "index": 48
+                        "index": 54
                       },
                       "812": {
                         "text": "Rogers (812)",
-                        "index": 49
+                        "index": 55
                       },
                       "852": {
                         "text": "Telus (852)",
-                        "index": 50
+                        "index": 56
                       },
                       "9009": {
                         "text": "M247 (9009)",
-                        "index": 51
+                        "index": 57
+                      },
+                      "19318": {
+                        "text": "Interserver (19318)",
+                        "index": 16
+                      },
+                      "24560": {
+                        "text": "Bharti Airtel (24560)",
+                        "index": 25
+                      },
+                      "55836": {
+                        "text": "Reliance Jio (55836)",
+                        "index": 42
+                      },
+                      "60781": {
+                        "text": "LeaseWeb NL (60781)",
+                        "index": 46
+                      },
+                      "3356": {
+                        "text": "Lumen (3356)",
+                        "index": 34
+                      },
+                      "45090": {
+                        "text": "Tencent (45090)",
+                        "index": 38
                       }
                     }
                   }
